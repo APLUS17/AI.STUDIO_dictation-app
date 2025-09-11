@@ -21,10 +21,44 @@
     </script>
   </head>
   <body>
-    <div class="app-container">
+    <div class="app-container" id="appContainer">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-search-container">
+            <i class="fas fa-search search-icon"></i>
+            <input type="search" placeholder="Search" class="sidebar-search-input">
+            <button class="sidebar-new-note-btn" id="sidebarNewNoteButton" title="New Note">
+              <i class="fas fa-pencil-alt"></i>
+            </button>
+          </div>
+        </div>
+        <nav class="sidebar-nav">
+          <div class="sidebar-section">
+             <ul class="sidebar-list">
+                <li><a href="#" class="sidebar-link" id="allNotesButton"><i class="fas fa-book-open"></i><span>Library</span></a></li>
+              </ul>
+          </div>
+          <div class="sidebar-section">
+            <h3 class="sidebar-section-title">Projects</h3>
+            <ul class="sidebar-list" id="projectsList">
+              <!-- Dynamically populated -->
+            </ul>
+          </div>
+          <div class="sidebar-section" id="recent-notes-section">
+            <h3 class="sidebar-section-title">Recent</h3>
+            <ul class="sidebar-list" id="recentNotesList">
+              <!-- Dynamically populated -->
+            </ul>
+          </div>
+        </nav>
+      </aside>
+
       <div class="main-content">
         <div class="note-area">
           <div class="note-header">
+             <button class="sidebar-toggle-button" id="sidebarToggleButton">
+              <i class="fas fa-bars"></i>
+            </button>
             <div class="editor-title" contenteditable="true" placeholder="Untitled Note">
               Untitled Note
             </div>
@@ -50,6 +84,36 @@
               contenteditable="true"
               placeholder="Raw transcription will appear here..."
             ></div>
+          </div>
+        </div>
+        
+        <div class="notes-list-view">
+          <div class="notes-list-header">
+            <!-- Back button removed to match design -->
+            <div class="header-title-container">
+                <h1>Ideas</h1>
+                <!-- Note count removed to match design -->
+            </div>
+            <div class="profile-icon">
+                <i class="fas fa-user"></i>
+            </div>
+          </div>
+          <div class="ideas-tabs">
+            <button class="idea-tab-btn active" data-tab="songs" title="Songs">
+                <i class="fas fa-music"></i>
+                <span>Songs</span>
+            </button>
+            <button class="idea-tab-btn" data-tab="verses" title="Verses">
+                <i class="fas fa-quote-right"></i>
+                <span>Verses</span>
+            </button>
+            <button class="idea-tab-btn" data-tab="takes" title="Takes">
+                <i class="fas fa-microphone-alt"></i>
+                <span>Takes</span>
+            </button>
+          </div>
+          <div class="notes-list-content">
+              <!-- Notes will be rendered here by TS -->
           </div>
         </div>
 
@@ -88,9 +152,16 @@
             </button>
           </div>
         </div>
+        
+        <div class="list-view-fab-container">
+            <button class="list-view-new-note-fab" title="New Note">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>
       </div>
     </div>
 
+    <div id="contextMenu" class="context-menu"></div>
     <div id="micStatus" class="debug-panel"></div>
 
     <script>

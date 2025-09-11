@@ -1,3 +1,4 @@
+
 @import url(https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css);
 @import url(https://fonts.cdnfonts.com/css/sf-mono);
 
@@ -22,6 +23,11 @@
   --color-border-dark: rgba(255, 255, 255, 0.12);
   --color-recording-dark: #ff453a;
   --color-success-dark: #32d74b;
+  --sidebar-bg-dark: #181818;
+  --sidebar-border-dark: #2a2a2a;
+  --sidebar-item-hover-bg-dark: rgba(255, 255, 255, 0.05);
+  --sidebar-item-active-bg-dark: rgba(255, 255, 255, 0.08);
+  --note-card-bg-dark: #2c2c2e;
 
   --glass-bg-dark: rgba(30, 30, 30, 0.6);
   --glass-border-dark: rgba(255, 255, 255, 0.15);
@@ -45,6 +51,12 @@
   --color-border-light: #DCDCDC;
   --color-recording-light: #ff3b30;
   --color-success-light: #30d158;
+  --sidebar-bg-light: #FFFFFF;
+  --sidebar-border-light: #EAEAEA;
+  --sidebar-item-hover-bg-light: #f0f0f0;
+  --sidebar-item-active-bg-light: #e5e5e5;
+  --note-card-bg-light: #ffffff;
+
 
   --glass-bg-light: rgba(255, 255, 255, 0.65);
   --glass-border-light: rgba(0, 0, 0, 0.07);
@@ -68,6 +80,11 @@
   --color-border: var(--color-border-dark);
   --color-recording: var(--color-recording-dark);
   --color-success: var(--color-success-dark);
+  --sidebar-bg: var(--sidebar-bg-dark);
+  --sidebar-border: var(--sidebar-border-dark);
+  --sidebar-item-hover-bg: var(--sidebar-item-hover-bg-dark);
+  --sidebar-item-active-bg: var(--sidebar-item-active-bg-dark);
+  --note-card-bg: var(--note-card-bg-dark);
   --glass-bg: var(--glass-bg-dark);
   --glass-border: var(--glass-border-dark);
   --glass-highlight: var(--glass-highlight-dark);
@@ -88,29 +105,38 @@
 
   --footer-height: 120px; /* Height of the non-live recording interface */
   --live-footer-height: 350px; /* Height of the live recording interface when fixed */
+  --sidebar-width: 280px;
 }
 
 body.light-mode {
   --color-bg: var(--color-bg-light);
   --color-bg-alt: var(--color-bg-alt-light);
-  --color-surface: var(--color-surface-light);
-  --color-surface-hover: var(--color-surface-hover-light);
-  --color-surface-active: var(--color-surface-active-light);
-  --color-text: var(--color-text-light);
-  --color-text-secondary: var(--color-text-secondary-light);
-  --color-text-tertiary: var(--color-text-tertiary-light);
-  --color-accent: var(--color-accent-light);
-  --color-accent-alt: var(--color-accent-alt-light);
-  --color-cursor: var(--color-cursor-light);
-  --color-border: var(--color-border-light);
-  --color-recording: var(--color-recording-light);
-  --color-success: var(--color-success-light);
-  --glass-bg: var(--glass-bg-light);
-  --glass-border: var(--glass-border-light);
-  --glass-highlight: var(--glass-highlight-light);
-  --glass-shadow: var(--glass-shadow-light);
-  --glass-recording-bg: var(--glass-recording-bg-light);
-  --glass-recording-border: var(--glass-recording-border-light);
+  --color-surface: #E8E8ED;
+  --color-surface-hover: #DCDCE3;
+  --color-surface-active: #D1D1D8;
+  --color-text: #000000;
+  --color-text-secondary: #3c3c4399;
+  --color-text-tertiary: #3c3c434d;
+  --color-accent: #007AFF;
+  --color-accent-alt: #5856d6;
+  --color-cursor: var(--color-accent-light);
+  --color-border: #DCDCDC;
+  --color-recording: #ff3b30;
+  --color-success: #30d158;
+  --sidebar-bg: #F2F2F7;
+  --sidebar-border: #EAEAEA;
+  --sidebar-item-hover-bg: #e5e5ea;
+  --sidebar-item-active-bg: #dcdce3;
+  --note-card-bg: #ffffff;
+
+
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(0, 0, 0, 0.07);
+  --glass-highlight: var(--color-surface-active-light);
+  --glass-shadow: rgba(0, 0, 0, 0.05);
+
+  --glass-recording-bg: rgba(248, 248, 248, 0.75);
+  --glass-recording-border: rgba(0, 0, 0, 0.1);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0,0,0,0.03);
   --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0,0,0,0.04);
@@ -146,36 +172,190 @@ body {
 
 .app-container {
   display: flex;
-  flex-direction: column;
   height: 100%; /* Fill body */
   width: 100%;
   max-width: 100%;
   overflow: hidden; /* Ensure app container doesn't scroll */
 }
 
+.sidebar {
+  width: var(--sidebar-width);
+  background-color: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  transition: margin-left var(--transition-normal), background-color var(--transition-normal), border-color var(--transition-normal);
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  margin-bottom: 16px;
+}
+
+.sidebar-search-container {
+  position: relative;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.sidebar-search-input {
+  width: 100%;
+  flex-grow: 1;
+  padding: 8px 12px 8px 34px;
+  border-radius: 8px;
+  border: 1px solid var(--sidebar-border);
+  background-color: var(--color-bg-alt);
+  color: var(--color-text);
+  font-family: var(--font-primary);
+  font-size: 14px;
+  outline: none;
+}
+.sidebar-search-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-dark);
+}
+
+.sidebar-new-note-btn {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.sidebar-new-note-btn:hover {
+  background-color: var(--sidebar-item-hover-bg);
+  color: var(--color-text);
+}
+.sidebar-new-note-btn i {
+  font-size: 16px;
+}
+
+.sidebar-nav {
+  flex-grow: 1;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  margin-bottom: 20px;
+}
+
+.sidebar-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  padding: 0 12px 8px;
+  letter-spacing: 0.05em;
+}
+
+.sidebar-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar-list li {
+  margin-bottom: 4px;
+}
+
+.sidebar-link, .sidebar-note-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar-link:hover, .sidebar-note-item:hover {
+  background-color: var(--sidebar-item-hover-bg);
+  color: var(--color-text);
+}
+
+.sidebar-note-item.active, .sidebar-link.active {
+  background-color: var(--sidebar-item-active-bg);
+  color: var(--color-text);
+}
+
+.sidebar-link i, .sidebar-note-item i {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  color: var(--color-text-tertiary);
+}
+
 .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  position: relative; /* For z-index context of children and :has selector behavior */
-  overflow: hidden; /* Important: This clips its content if it would overflow */
-  transition: padding-bottom var(--transition-slow) ease-in-out; /* Smoothly adjust padding for fixed panel */
+  position: relative;
+  overflow: hidden;
+  transition: padding-bottom var(--transition-slow) ease-in-out;
+  min-width: 0;
 }
 
-/* When .is-live is a direct child of .main-content, add padding to .main-content */
 .main-content:has(> .recording-interface.is-live) {
   padding-bottom: var(--live-footer-height);
 }
 
+/* View Toggling Logic */
+.notes-list-view,
+.list-view-fab-container {
+  display: none;
+}
+.app-container.list-view-active .note-area,
+.app-container.list-view-active .recording-interface {
+  display: none;
+}
+.app-container.list-view-active .notes-list-view,
+.app-container.list-view-active .list-view-fab-container {
+  display: flex;
+}
+
 .note-area {
-  flex: 1; /* Takes available space within main-content */
-  overflow: hidden; /* For its own content scroll (note-content-wrapper) */
+  flex: 1;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background-color: var(--color-bg);
   padding: 32px 0 0;
   transition: background-color var(--transition-normal);
-  min-height: 0; /* Allows this flex item to shrink below its content size if needed */
+  min-height: 0;
 }
 
 .note-header {
@@ -186,6 +366,24 @@ body {
   border-bottom: 1px solid var(--color-border);
   margin-bottom: 12px;
   transition: border-color var(--transition-normal);
+}
+
+.sidebar-toggle-button {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 8px;
+  margin-right: 12px;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+}
+.sidebar-toggle-button:hover {
+  color: var(--color-text);
+  background-color: var(--color-surface);
 }
 
 .editor-title {
@@ -318,7 +516,6 @@ body.light-mode .active-tab-indicator {
 
 
 .recording-interface {
-  /* Default state: part of the flex flow in main-content */
   height: var(--footer-height);
   width: 100%;
   display: flex;
@@ -328,45 +525,34 @@ body.light-mode .active-tab-indicator {
   padding: 12px 20px;
   background-color: transparent;
   border-top: 1px solid transparent;
-  flex-shrink: 0; /* Don't shrink this element in flex layout */
-  /* Transition properties for when it becomes .is-live (fixed) */
+  flex-shrink: 0;
   transition: opacity 0.3s ease-out, transform 0.35s ease-out,
-              background-color var(--transition-slow) ease-in-out, /* For bg change */
-              height var(--transition-slow) ease-in-out; /* If height changes for fixed */
-  z-index: 10; /* Base z-index, lower than live state */
+              background-color var(--transition-slow) ease-in-out,
+              height var(--transition-slow) ease-in-out;
+  z-index: 10;
 }
 
 .recording-interface.is-live {
-  position: fixed; /* Take out of flow, overlay */
+  position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  height: var(--live-footer-height); /* Explicit height for the fixed panel */
-  z-index: 1000; /* High z-index to be on top */
-
-  /* Visuals for live state */
+  height: var(--live-footer-height);
+  z-index: 1000;
   background-color: var(--glass-recording-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: 1px solid var(--glass-recording-border);
   box-shadow: 0 -4px 20px var(--glass-shadow);
-
-  /* Internal layout */
-  justify-content: flex-start; /* Align live content to top */
-  padding-top: 20px; /* Internal padding from top of the fixed panel */
-  padding-bottom: 20px; /* Internal padding from bottom of the fixed panel - CRITICAL for button */
-  
-  /* Override transform and opacity for entry animation if desired, otherwise let content appear */
-  /* transform: translateY(0); */ /* Example for slide-up, needs initial state too */
-  /* opacity: 1; */
+  justify-content: flex-start;
+  padding-top: 20px;
+  padding-bottom: 20px;
 }
 
 .status-indicator { margin-bottom: 16px; }
-/* When live, the status indicator related to non-live state is hidden */
 .recording-interface.is-live .status-indicator { display: none; }
 .status-text { font-size: 14px; color: var(--color-text-tertiary); text-align: center; transition: color var(--transition-normal); font-family: var(--font-primary); }
 
-/* Elements specific to the live recording view */
 .live-recording-title,
 #liveWaveformCanvas,
 .live-recording-timer {
@@ -414,10 +600,7 @@ body.light-mode .active-tab-indicator {
   align-items: center;
   justify-content: center;
   gap: 24px;
-  position: relative; /* For .record-text positioning */
-  /* This container is inside .recording-interface.
-     If .recording-interface.is-live has padding-bottom: 20px,
-     this whole control group will be 20px from the bottom of the fixed panel. */
+  position: relative;
 }
 
 .action-button {
@@ -430,7 +613,6 @@ body.light-mode .active-tab-indicator {
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
-/* Action buttons are hidden when recording is live and panel is an overlay */
 .recording-interface.is-live .action-button { display: none; }
 .action-button:hover { color: var(--color-text); transform: translateY(-2px) scale(1.05); box-shadow: var(--shadow-md); background-color: var(--color-surface-hover); border-color: var(--glass-highlight); }
 
@@ -452,13 +634,11 @@ body.light-mode .record-button.recording .record-button-inner { color: white; }
     filter: brightness(0.9);
 }
 
-/* Ensure record button icon changes work in fixed panel */
 .recording-interface.is-live .record-button.recording .record-button-inner i.fa-stop { display: inline-block; font-size: 20px; }
 .recording-interface.is-live .record-button.recording .record-button-inner i.fa-microphone { display: none; }
 
 .record-waves { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 200px; height: 200px; z-index: 1; opacity: 0; transition: opacity var(--transition-normal); pointer-events: none; }
 .record-button.recording .record-waves { opacity: 1; }
-/* Hide waves when the panel is the fixed overlay */
 .recording-interface.is-live .record-waves { display: none; }
 .wave { fill: none; stroke: var(--color-recording); stroke-width: 1.5px; opacity: 0; transform-origin: center; }
 .record-button.recording .wave1 { animation: wave 2s infinite ease-out; }
@@ -468,8 +648,335 @@ body.light-mode .record-button.recording .record-button-inner { color: white; }
 
 .record-text { position: absolute; bottom: -30px; left: 50%; transform: translateX(-50%); font-size: 12px; white-space: nowrap; color: var(--color-text-tertiary); opacity: 0; transition: opacity var(--transition-fast); font-family: var(--font-primary); }
 .record-button:hover .record-text { opacity: 1; }
-/* Hide record text hint when panel is the fixed overlay */
 .recording-interface.is-live .record-text { display: none; }
+
+.context-menu {
+  position: fixed;
+  z-index: 3000;
+  min-width: 240px;
+  background-color: var(--glass-recording-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-recording-border);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: var(--shadow-lg);
+  display: none;
+}
+
+.context-menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.context-menu li {
+  position: relative;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-primary);
+  user-select: none;
+  transition: background-color var(--transition-fast);
+  position: relative;
+}
+
+.context-menu-item:hover {
+  background-color: var(--sidebar-item-hover-bg);
+}
+
+.context-menu-item i {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.context-menu-item:hover i {
+    color: var(--color-text);
+}
+
+.context-menu-item.chevron::after {
+    content: '›';
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 20px;
+    color: var(--color-text-tertiary);
+}
+.context-menu li:hover > .context-submenu {
+    display: block;
+}
+
+.context-submenu {
+    position: absolute;
+    top: -6px; /* Align with parent padding */
+    left: calc(100% + 4px);
+    display: none; /* Hidden by default */
+    min-width: 200px;
+    background-color: var(--glass-recording-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-recording-border);
+    border-radius: 12px;
+    padding: 6px;
+    box-shadow: var(--shadow-lg);
+}
+
+
+.context-menu-separator {
+    height: 1px;
+    background-color: var(--sidebar-border);
+    margin: 4px 6px;
+}
+
+.context-menu-item.delete {
+  color: var(--color-recording);
+}
+
+.context-menu-item.delete i {
+  color: var(--color-recording);
+}
+.context-menu-item.delete:hover {
+    background-color: rgba(255, 59, 48, 0.15);
+}
+body.light-mode .context-menu-item.delete:hover {
+    background-color: rgba(255, 59, 48, 0.1);
+}
+
+/* NOTES LIST VIEW STYLES */
+.notes-list-view {
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--color-bg);
+}
+.notes-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  flex-shrink: 0;
+}
+.header-title-container {
+  text-align: left;
+  flex-grow: 1;
+}
+.header-title-container h1 {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+  line-height: 1.2;
+}
+.profile-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: var(--color-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.profile-icon i {
+    font-size: 16px;
+}
+
+.ideas-tabs {
+    display: flex;
+    gap: 12px;
+    padding: 16px 24px;
+    flex-shrink: 0;
+}
+.idea-tab-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 90px;
+    height: 90px;
+    background-color: var(--color-surface);
+    border: 2px solid transparent;
+    border-radius: 20px;
+    color: var(--color-text);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-family: var(--font-primary);
+}
+body.light-mode .idea-tab-btn {
+    background-color: #ffffff;
+    border: none;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.idea-tab-btn:hover {
+    transform: translateY(-2px);
+    background-color: var(--color-surface-hover);
+}
+body.light-mode .idea-tab-btn:hover {
+    background-color: #f7f7f7;
+}
+
+.idea-tab-btn.active {
+    border-color: var(--color-text);
+    box-shadow: var(--shadow-sm);
+}
+body.light-mode .idea-tab-btn.active {
+    border: 2px solid #000;
+}
+.idea-tab-btn i {
+    font-size: 24px;
+    color: var(--color-text-secondary);
+}
+.idea-tab-btn.active i {
+    color: var(--color-text);
+}
+.idea-tab-btn span {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+}
+.idea-tab-btn.active span {
+    color: var(--color-text);
+}
+
+.notes-list-content {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 0 24px;
+}
+.notes-group {
+  margin-bottom: 24px;
+}
+.notes-group-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 16px;
+}
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+.note-card {
+  background-color: var(--note-card-bg);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  border: 1px solid var(--color-border);
+}
+.note-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.note-card-title {
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.note-card-snippet {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;  
+  overflow: hidden;
+}
+
+.placeholder-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    color: var(--color-text-secondary);
+    padding: 20px;
+}
+.placeholder-content p {
+    font-size: 18px;
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+.placeholder-content span {
+    font-size: 14px;
+    max-width: 300px;
+}
+
+
+/* LIST VIEW FAB STYLES */
+.list-view-fab-container {
+  position: absolute;
+  bottom: 25px;
+  right: 25px;
+  z-index: 100;
+  flex-direction: column; /* to make it a flex container */
+  align-items: center;
+}
+.list-view-new-note-fab {
+  position: relative;
+  background-color: #2c2c2e;
+  border: none;
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  color: #f2f2f7;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  transition: all var(--transition-fast);
+  overflow: hidden; /* Important for the dog-ear */
+}
+
+body.light-mode .list-view-new-note-fab {
+    background-color: #000000;
+    color: #ffffff;
+}
+.list-view-new-note-fab:hover {
+    transform: scale(1.05) translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.35);
+}
+.list-view-new-note-fab::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    background: linear-gradient(315deg, var(--color-bg) 50%, transparent 50%);
+    transition: background var(--transition-normal);
+}
+body.light-mode .list-view-new-note-fab::after {
+    background: linear-gradient(315deg, var(--color-bg) 50%, #2c2c2e 50%);
+}
+
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--color-bg-alt); border-radius: 5px; }
@@ -480,17 +987,47 @@ body.light-mode .record-button.recording .record-button-inner { color: white; }
 .debug-panel.visible { display: block; }
 .hidden { display: none !important; }
 
+@media (max-width: 1024px) {
+  .app-container.sidebar-collapsed .sidebar {
+    margin-left: calc(-1 * var(--sidebar-width));
+  }
+  .sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 2000;
+    margin-left: 0;
+  }
+  .sidebar-toggle-button {
+    display: block;
+  }
+}
+
 @media (max-width: 768px) {
   .note-area { padding: 20px 0 0; }
   .note-header { padding: 0 20px 12px; flex-direction: column; align-items: stretch; gap: 12px; }
-  .editor-title { padding: 0; font-size: 20px; margin-bottom: 0; margin-right: 0; text-align: left; }
+  .note-header .sidebar-toggle-button {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+  }
+  .editor-title { padding: 0; font-size: 20px; margin-bottom: 0; margin-right: 0; text-align: left; margin-top: 40px; }
   .tab-navigation-container { width: 100%; }
   .tab-navigation { width: 100%; }
   .tab-button { flex-grow: 1; text-align: center; }
   .note-content-wrapper { padding: 0 20px 20px; }
-  .recording-interface.is-live { padding-left: 15px; padding-right: 15px; } /* Keep existing responsive padding */
+  .recording-interface.is-live { padding-left: 15px; padding-right: 15px; }
   #liveWaveformCanvas { max-width: calc(100% - 30px); height: 60px; }
   .live-recording-timer { font-size: 36px; }
   .action-button { width: 44px; height: 44px; font-size: 16px; }
   .record-button { width: 64px; height: 64px; }
+
+  .notes-list-header { padding: 12px 16px; }
+  .header-title-container h1 { font-size: 28px; }
+  .ideas-tabs { padding: 12px 16px; }
+  .notes-list-content { padding: 0 16px; }
+  .notes-grid { grid-template-columns: 1fr; }
+  .list-view-fab-container { bottom: 15px; right: 15px; }
 }
