@@ -333,19 +333,38 @@ body {
   padding-bottom: var(--live-footer-height);
 }
 
-/* View Toggling Logic */
+/* --- View Toggling Logic --- */
 .notes-list-view,
-.list-view-fab-container {
+.list-view-fab-container,
+.lyriq-player-view {
   display: none;
 }
+
 .app-container.list-view-active .note-area,
-.app-container.list-view-active .recording-interface {
+.app-container.list-view-active .recording-interface,
+.app-container.list-view-active .main-content:not(:has(> .notes-list-view)) {
   display: none;
 }
 .app-container.list-view-active .notes-list-view,
 .app-container.list-view-active .list-view-fab-container {
   display: flex;
 }
+
+.app-container.lyriq-player-active .main-content {
+  display: none;
+}
+.app-container.lyriq-player-active .lyriq-player-view {
+  display: flex; /* This is the key change */
+  flex-direction: column;
+  flex: 1;
+  overflow: auto;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: system-ui, sans-serif;
+  height: 100%;
+}
+/* --- End View Toggling --- */
+
 
 .note-area {
   flex: 1;
@@ -634,8 +653,11 @@ body.light-mode .record-button.recording .record-button-inner { color: white; }
     filter: brightness(0.9);
 }
 
-.recording-interface.is-live .record-button.recording .record-button-inner i.fa-stop { display: inline-block; font-size: 20px; }
-.recording-interface.is-live .record-button.recording .record-button-inner i.fa-microphone { display: none; }
+.record-button.recording .record-button-inner .fa-microphone { display: none; }
+.record-button.recording .record-button-inner .fa-stop {
+  display: inline-block !important; /* override inline style */
+  font-size: 20px;
+}
 
 .record-waves { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 200px; height: 200px; z-index: 1; opacity: 0; transition: opacity var(--transition-normal); pointer-events: none; }
 .record-button.recording .record-waves { opacity: 1; }
@@ -978,10 +1000,193 @@ body.light-mode .list-view-new-note-fab::after {
 }
 
 
+/* LYRIQ PLAYER STYLES */
+.lyriq-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  flex-shrink: 0;
+}
+.lyriq-upload-btn {
+  background: var(--color-surface, #222);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.lyriq-lyrics {
+  flex: 1;
+  overflow-y: auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0; /* Fix for flexbox overflow */
+  padding: 0 1rem;
+}
+.lyriq-line {
+  margin: 0.5rem 0;
+  opacity: 0.6;
+  transition: all 0.3s ease;
+}
+.lyriq-line.active {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--color-accent, #3A8DFF);
+  opacity: 1;
+}
+.lyriq-line.placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.lyriq-footer {
+  padding: 1.5rem;
+  background-color: transparent;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.lyriq-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.lyriq-main-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.lyriq-control-btn {
+  font-size: 1.25rem;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  cursor: pointer;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color var(--transition-fast);
+}
+.lyriq-control-btn.active {
+  color: var(--color-accent);
+}
+.lyriq-control-btn:disabled {
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+}
+.lyriq-control-btn.play-pause-btn {
+    width: 60px;
+    height: 60px;
+    font-size: 1.75rem;
+    background-color: var(--color-text);
+    color: var(--color-bg);
+}
+.lyriq-control-btn.play-pause-btn:disabled {
+    background-color: var(--color-text-tertiary);
+    color: var(--color-bg);
+}
+
+.lyriq-sub-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--color-text-secondary);
+}
+.lyriq-record-btn {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+}
+.lyriq-record-btn .fa-stop { display: none; }
+.lyriq-record-btn.recording .fa-microphone { display: none; }
+.lyriq-record-btn.recording .fa-stop { display: inline-block; }
+.lyriq-record-btn.recording {
+  color: var(--color-recording);
+}
+.lyriq-record-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lyriq-volume-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+.sub-control-placeholder {
+    width: 32px; /* Match width of record button */
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  width: 100%;
+}
+input[type="range"]:focus {
+  outline: none;
+}
+
+/* Track */
+input[type="range"]::-webkit-slider-runnable-track {
+  background: var(--color-surface-active);
+  height: 4px;
+  border-radius: 2px;
+}
+input[type="range"]::-moz-range-track {
+  background: var(--color-surface-active);
+  height: 4px;
+  border-radius: 2px;
+}
+
+/* Thumb */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -4px; /* centers thumb on the track */
+  background-color: var(--color-text);
+  height: 12px;
+  width: 12px;
+  border-radius: 50%;
+}
+input[type="range"]::-moz-range-thumb {
+  border: none;
+  border-radius: 50%;
+  background-color: var(--color-text);
+  height: 12px;
+  width: 12px;
+}
+input[type="range"]:disabled::-webkit-slider-thumb {
+  background-color: var(--color-text-tertiary);
+}
+input[type="range"]:disabled::-moz-range-thumb {
+  background-color: var(--color-text-tertiary);
+}
+
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: var(--color-bg-alt); border-radius: 5px; }
-::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
-::-webkit-scrollbar-thumb:hover { background: var(--glass-highlight); }
+::-webkit-scrollbar-track { background: transparent; }
+.lyriq-lyrics::-webkit-scrollbar-track {
+    background: var(--color-surface);
+}
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-tertiary); }
 
 .debug-panel { background-color: rgba(0, 0, 0, 0.95); color: #33ff33; font-family: var(--font-mono); font-size: 12px; padding: 12px; position: fixed; bottom: 0; left: 0; max-height: 200px; width: 100%; z-index: 2000; overflow-y: auto; display: none; }
 .debug-panel.visible { display: block; }
