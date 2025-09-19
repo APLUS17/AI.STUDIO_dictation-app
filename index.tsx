@@ -1,4 +1,3 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -11,13 +10,24 @@ import {marked} from 'marked';
 const MODEL_NAME = 'gemini-2.5-flash';
 
 // Interfaces for data structures
+interface NoteSection {
+  type: string;
+  content: string;
+}
+
 interface Note {
   id: string;
   title: string;
   rawTranscription: string;
-  polishedNote: string;
+  polishedNote: string; // Used for 'open' format content and list view snippets
+  sections: NoteSection[]; // Used for 'structured' format
+  editorFormat: 'structured' | 'open';
   timestamp: number;
   projectId: string | null;
+  audioUrl: string | null;
+  audioDuration: number | null; // in milliseconds
+  audioData: string | null;
+  audioMimeType: string | null;
 }
 
 interface Project {
@@ -34,7 +44,6 @@ class VoiceNotesApp {
   private audioChunks: Blob[] = [];
   private isRecording = false;
   private stream: MediaStream | null = null;
-  private hasAttemptedPermission = false;
 
   // Live recording UI properties
   private audioContext: AudioContext | null = null;
@@ -56,8 +65,6 @@ class VoiceNotesApp {
   private appContainer: HTMLDivElement;
   private recordButton: HTMLButtonElement;
   private recordingStatus: HTMLDivElement;
-  private rawTranscription: HTMLDivElement;
-  private polishedNote: HTMLDivElement;
   private newButton: HTMLButtonElement;
   private themeToggleButton: HTMLButtonElement;
   private themeToggleIcon: HTMLElement;
@@ -68,6 +75,15 @@ class VoiceNotesApp {
   private projectsList: HTMLUListElement;
   private recentNotesList: HTMLUListElement;
   private contextMenu: HTMLDivElement;
+  private noteArea: HTMLDivElement;
+
+  // Song Structure Editor Elements
+  private songStructureEditor: HTMLDivElement;
+  private openFormatEditor: HTMLDivElement;
+  private openFormatContent: HTMLDivElement;
+  private addSectionBtn: HTMLButtonElement;
+  private formatToggleButton: HTMLButtonElement;
+  private formatToggleIcon: HTMLElement;
   
   // Recording interface elements
   private recordingInterface: HTMLDivElement;
@@ -83,24 +99,36 @@ class VoiceNotesApp {
   private ideasTabsContainer: HTMLDivElement;
   private listViewNewNoteFab: HTMLButtonElement;
 
+  // Note Audio Playback elements
+  private audioPlaybackContainer: HTMLDivElement;
+  private playbackTitle: HTMLDivElement;
+  private playbackPlayButton: HTMLButtonElement;
+  private playbackPlayIcon: HTMLElement;
+  private playbackPauseIcon: HTMLElement;
+  private playbackRewindButton: HTMLButtonElement;
+  private playbackForwardButton: HTMLButtonElement;
+  private playbackDate: HTMLDivElement;
+  private playbackDurationDisplay: HTMLSpanElement;
+  private playbackTimeDisplay: HTMLSpanElement;
+  private noteAudioPlayer: HTMLAudioElement;
+  private isPlaybackUiActive = false;
+
   // Lyriq Player elements and state
   private lyriqPlayerView: HTMLDivElement;
   private lyriqPlayerButton: HTMLAnchorElement;
   private audioUploadInput: HTMLInputElement;
   private lyriqAudioPlayer: HTMLAudioElement;
-  private lyriqPlayBtn: HTMLButtonElement;
-  private lyriqPlayIcon: HTMLElement;
-  private lyriqPrevBtn: HTMLButtonElement;
-  private lyriqNextBtn: HTMLButtonElement;
-  private lyriqRecordBtn: HTMLButtonElement;
-  private lyriqShuffleBtn: HTMLButtonElement;
-  private lyriqRepeatBtn: HTMLButtonElement;
   private lyricsContainer: HTMLDivElement;
-  private songTitleEl: HTMLHeadingElement;
-  private lyriqProgressBar: HTMLInputElement;
-  private lyriqVolumeSlider: HTMLInputElement;
-  private lyriqCurrentTime: HTMLSpanElement;
-  private lyriqRemainingTime: HTMLSpanElement;
+  private lyriqSongTitle: HTMLHeadingElement;
+  private lyriqSongSubtitle: HTMLHeadingElement;
+  private lyriqAddBeatBtn: HTMLButtonElement;
+  private lyriqVocalIndicator: HTMLButtonElement;
+  private lyriqModalTime: HTMLSpanElement;
+  private lyriqProgressLine: HTMLDivElement;
+  private lyriqVolumeBtn: HTMLButtonElement;
+  private lyriqModalRecordBtn: HTMLButtonElement;
+  private lyriqModalPlayBtn: HTMLButtonElement;
+  private lyriqUploadBtnHeader: HTMLButtonElement;
 
   private lyriqIsPlaying = false;
   private lyriqCurrentLineIndex = -1;
@@ -121,8 +149,6 @@ class VoiceNotesApp {
     this.appContainer = document.getElementById('appContainer') as HTMLDivElement;
     this.recordButton = document.getElementById('recordButton') as HTMLButtonElement;
     this.recordingStatus = document.getElementById('recordingStatus') as HTMLDivElement;
-    this.rawTranscription = document.getElementById('rawTranscription') as HTMLDivElement;
-    this.polishedNote = document.getElementById('polishedNote') as HTMLDivElement;
     this.newButton = document.getElementById('newButton') as HTMLButtonElement;
     this.themeToggleButton = document.getElementById('themeToggleButton') as HTMLButtonElement;
     this.themeToggleIcon = this.themeToggleButton.querySelector('i') as HTMLElement;
@@ -133,6 +159,15 @@ class VoiceNotesApp {
     this.projectsList = document.getElementById('projectsList') as HTMLUListElement;
     this.recentNotesList = document.getElementById('recentNotesList') as HTMLUListElement;
     this.contextMenu = document.getElementById('contextMenu') as HTMLDivElement;
+    this.noteArea = document.querySelector('.note-area') as HTMLDivElement;
+    
+    // Song Structure Editor Elements
+    this.songStructureEditor = document.getElementById('songStructureEditor') as HTMLDivElement;
+    this.openFormatEditor = document.getElementById('openFormatEditor') as HTMLDivElement;
+    this.openFormatContent = document.getElementById('openFormatContent') as HTMLDivElement;
+    this.addSectionBtn = document.getElementById('addSectionBtn') as HTMLButtonElement;
+    this.formatToggleButton = document.getElementById('formatToggleButton') as HTMLButtonElement;
+    this.formatToggleIcon = this.formatToggleButton.querySelector('i') as HTMLElement;
     
     // Recording UI elements
     this.recordingInterface = document.querySelector('.recording-interface') as HTMLDivElement;
@@ -147,25 +182,37 @@ class VoiceNotesApp {
     this.notesListContent = document.querySelector('.notes-list-content') as HTMLDivElement;
     this.ideasTabsContainer = document.querySelector('.ideas-tabs') as HTMLDivElement;
     this.listViewNewNoteFab = document.querySelector('.list-view-new-note-fab') as HTMLButtonElement;
+
+    // Note Audio Playback elements
+    this.audioPlaybackContainer = document.getElementById('audioPlaybackContainer') as HTMLDivElement;
+    this.playbackTitle = this.audioPlaybackContainer.querySelector('.playback-title') as HTMLDivElement;
+    this.playbackPlayButton = document.getElementById('playbackPlayButton') as HTMLButtonElement;
+    this.playbackPlayIcon = this.playbackPlayButton.querySelector('.play-icon') as HTMLElement;
+    this.playbackPauseIcon = this.playbackPlayButton.querySelector('.pause-icon') as HTMLElement;
+    this.playbackRewindButton = document.getElementById('playbackRewindButton') as HTMLButtonElement;
+    this.playbackForwardButton = document.getElementById('playbackForwardButton') as HTMLButtonElement;
+    this.playbackDate = this.audioPlaybackContainer.querySelector('.playback-date') as HTMLDivElement;
+    this.playbackDurationDisplay = document.getElementById('playbackDurationDisplay') as HTMLSpanElement;
+    this.playbackTimeDisplay = document.getElementById('playbackTimeDisplay') as HTMLSpanElement;
+    this.noteAudioPlayer = document.getElementById('noteAudioPlayer') as HTMLAudioElement;
     
     // Lyriq Player elements
     this.lyriqPlayerView = document.querySelector('.lyriq-player-view') as HTMLDivElement;
     this.lyriqPlayerButton = document.getElementById('lyriqPlayerButton') as HTMLAnchorElement;
     this.audioUploadInput = document.getElementById('audioUpload') as HTMLInputElement;
     this.lyriqAudioPlayer = document.getElementById('lyriqAudio') as HTMLAudioElement;
-    this.lyriqPlayBtn = document.getElementById('playBtn') as HTMLButtonElement;
-    this.lyriqPlayIcon = this.lyriqPlayBtn.querySelector('i') as HTMLElement;
-    this.lyriqPrevBtn = document.getElementById('prevBtn') as HTMLButtonElement;
-    this.lyriqNextBtn = document.getElementById('nextBtn') as HTMLButtonElement;
-    this.lyriqRecordBtn = document.getElementById('recordBtn') as HTMLButtonElement;
-    this.lyriqShuffleBtn = document.getElementById('shuffleBtn') as HTMLButtonElement;
-    this.lyriqRepeatBtn = document.getElementById('repeatBtn') as HTMLButtonElement;
     this.lyricsContainer = document.getElementById('lyricsContainer') as HTMLDivElement;
-    this.songTitleEl = document.querySelector('.lyriq-toolbar .lyriq-upload-btn') as HTMLHeadingElement; // Updated selector
-    this.lyriqProgressBar = document.getElementById('progressBar') as HTMLInputElement;
-    this.lyriqVolumeSlider = document.getElementById('volumeSlider') as HTMLInputElement;
-    this.lyriqCurrentTime = document.getElementById('currentTime') as HTMLSpanElement;
-    this.lyriqRemainingTime = document.getElementById('remainingTime') as HTMLSpanElement;
+    this.lyriqSongTitle = document.getElementById('lyriqSongTitle') as HTMLHeadingElement;
+    this.lyriqSongSubtitle = document.getElementById('lyriqSongSubtitle') as HTMLHeadingElement;
+    this.lyriqAddBeatBtn = document.getElementById('lyriqAddBeatBtn') as HTMLButtonElement;
+    this.lyriqVocalIndicator = document.getElementById('lyriqVocalIndicator') as HTMLButtonElement;
+    this.lyriqModalTime = document.getElementById('lyriqModalTime') as HTMLSpanElement;
+    this.lyriqProgressLine = document.getElementById('lyriqProgressLine') as HTMLDivElement;
+    this.lyriqVolumeBtn = document.getElementById('lyriqVolumeBtn') as HTMLButtonElement;
+    this.lyriqModalRecordBtn = document.getElementById('lyriqModalRecordBtn') as HTMLButtonElement;
+    this.lyriqModalPlayBtn = document.getElementById('lyriqModalPlayBtn') as HTMLButtonElement;
+    this.lyriqUploadBtnHeader = document.getElementById('lyriqUploadBtnHeader') as HTMLButtonElement;
+
 
     // Initial setup
     this.bindEventListeners();
@@ -182,8 +229,6 @@ class VoiceNotesApp {
       }
       this.setActiveView('editor');
       this.renderSidebar();
-      this.updatePlaceholderVisibility(this.polishedNote);
-      this.updatePlaceholderVisibility(this.rawTranscription);
     })();
   }
 
@@ -192,6 +237,7 @@ class VoiceNotesApp {
     this.recordButton.addEventListener('click', () => this.toggleRecording());
     this.newButton.addEventListener('click', () => this.createNewNote());
     this.themeToggleButton.addEventListener('click', () => this.toggleTheme());
+    this.formatToggleButton.addEventListener('click', () => this.handleFormatToggle());
 
     // Sidebar controls
     this.sidebarToggleButton.addEventListener('click', () => this.toggleSidebar());
@@ -206,12 +252,18 @@ class VoiceNotesApp {
 
     // Editor controls
     this.editorTitle.addEventListener('blur', () => this.updateCurrentNoteContent());
-    this.polishedNote.addEventListener('blur', () => this.updateCurrentNoteContent());
-    this.rawTranscription.addEventListener('blur', () => this.updateCurrentNoteContent());
-
-    this.polishedNote.addEventListener('input', () => this.updatePlaceholderVisibility(this.polishedNote));
-    this.rawTranscription.addEventListener('input', () => this.updatePlaceholderVisibility(this.rawTranscription));
     this.editorTitle.addEventListener('input', () => this.updatePlaceholderVisibility(this.editorTitle));
+    this.openFormatContent.addEventListener('blur', () => this.updateCurrentNoteContent());
+
+    // Song Structure Editor Controls (Event Delegation)
+    this.songStructureEditor.addEventListener('click', (e) => this.handleSectionEditorClick(e));
+    this.songStructureEditor.addEventListener('blur', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('section-content')) {
+        this.updateCurrentNoteContent();
+      }
+    }, true); // Use capture phase for blur
+    this.addSectionBtn.addEventListener('click', () => this.addSection());
     
     // Notes list view controls
     this.ideasTabsContainer.addEventListener('click', (e) => this.handleIdeaTabClick(e as MouseEvent));
@@ -220,21 +272,31 @@ class VoiceNotesApp {
         this.setActiveView('editor');
     });
 
+    // Audio Playback Controls
+    this.playbackPlayButton.addEventListener('click', () => this.toggleNotePlayback());
+    this.playbackRewindButton.addEventListener('click', () => this.seekNotePlayback(-15));
+    this.playbackForwardButton.addEventListener('click', () => this.seekNotePlayback(15));
+    this.noteAudioPlayer.addEventListener('timeupdate', () => this.updatePlaybackTime());
+    this.noteAudioPlayer.addEventListener('loadedmetadata', () => this.updatePlaybackTime());
+    this.noteAudioPlayer.addEventListener('ended', () => this.handleNotePlaybackEnded());
+    this.noteAudioPlayer.addEventListener('play', () => this.updatePlaybackButton(true));
+    this.noteAudioPlayer.addEventListener('pause', () => this.updatePlaybackButton(false));
+
     // Lyriq Player controls
     this.lyriqPlayerButton.addEventListener('click', (e) => {
         e.preventDefault();
         this.setActiveView('lyriq');
     });
     this.audioUploadInput.addEventListener('change', (e) => this.handleLyriqFileUpload(e as Event));
-    this.lyriqPlayBtn.addEventListener('click', () => this.toggleLyriqPlayback());
-    this.lyriqPrevBtn.addEventListener('click', () => this.jumpToLyric('prev'));
-    this.lyriqNextBtn.addEventListener('click', () => this.jumpToLyric('next'));
-    this.lyriqRecordBtn.addEventListener('click', () => this.toggleRecording());
-    this.lyriqProgressBar.addEventListener('input', (e) => this.handleLyriqProgressScrub(e));
-    this.lyriqVolumeSlider.addEventListener('input', () => this.handleVolumeChange());
-    this.lyriqShuffleBtn.addEventListener('click', (e) => (e.currentTarget as HTMLElement).classList.toggle('active'));
-    this.lyriqRepeatBtn.addEventListener('click', (e) => (e.currentTarget as HTMLElement).classList.toggle('active'));
-
+    this.lyriqAddBeatBtn.addEventListener('click', () => this.audioUploadInput.click());
+    this.lyriqUploadBtnHeader.addEventListener('click', () => this.audioUploadInput.click());
+    this.lyriqModalPlayBtn.addEventListener('click', () => this.toggleLyriqPlayback());
+    this.lyriqModalRecordBtn.addEventListener('click', () => this.toggleRecording());
+    this.lyriqVolumeBtn.addEventListener('click', () => {
+        this.lyriqAudioPlayer.muted = !this.lyriqAudioPlayer.muted;
+        this.lyriqVolumeBtn.style.color = this.lyriqAudioPlayer.muted ? '#555' : '#fff';
+    });
+    
     this.lyriqAudioPlayer.addEventListener('loadedmetadata', () => this.handleLyriqMetadataLoaded());
     this.lyriqAudioPlayer.addEventListener('timeupdate', () => this.syncLyrics());
     this.lyriqAudioPlayer.addEventListener('ended', () => this.handleLyriqEnded());
@@ -242,7 +304,14 @@ class VoiceNotesApp {
 
     // Window and global listeners
     window.addEventListener('resize', () => { this.isMobile = window.innerWidth <= 1024; });
-    document.addEventListener('click', () => this.hideContextMenu());
+    document.addEventListener('click', (e) => {
+      this.hideContextMenu();
+      document.querySelectorAll('.section-type-dropdown.open').forEach(dropdown => {
+        if (!dropdown.contains(e.target as Node)) {
+          dropdown.classList.remove('open');
+        }
+      });
+    });
     
     // Context Menu Listeners (Desktop Right-Click + Mobile Long-Press)
     this.recentNotesList.addEventListener('contextmenu', (e) => this.showNoteContextMenu(e as MouseEvent));
@@ -272,6 +341,7 @@ class VoiceNotesApp {
           case 'lyriq':
               this.appContainer.classList.add('lyriq-player-active');
               this.lyriqPlayerButton.classList.add('active');
+              this.loadNoteIntoLyriqPlayer();
               break;
           case 'editor':
               // Default state, no extra class needed
@@ -347,7 +417,14 @@ class VoiceNotesApp {
   private loadDataFromStorage(): void {
     const notesData = localStorage.getItem('voiceNotes');
     if (notesData) {
-        this.notes = new Map(JSON.parse(notesData));
+        const parsedNotes: [string, Note][] = JSON.parse(notesData);
+        parsedNotes.forEach(([id, note]) => {
+            // Revoke any old blob URLs as they are invalid on page load
+            if (note.audioUrl && note.audioUrl.startsWith('blob:')) {
+                note.audioUrl = null;
+            }
+            this.notes.set(id, note);
+        });
     }
     const projectsData = localStorage.getItem('voiceProjects');
     if (projectsData) {
@@ -356,7 +433,17 @@ class VoiceNotesApp {
   }
 
   private saveDataToStorage(): void {
-    localStorage.setItem('voiceNotes', JSON.stringify(Array.from(this.notes.entries())));
+    // Create a deep copy to avoid modifying the original notes map
+    const notesToStore = new Map<string, Note>();
+    this.notes.forEach((note, id) => {
+        const noteCopy = { ...note };
+        // Don't store blob URLs in localStorage
+        if (noteCopy.audioUrl && noteCopy.audioUrl.startsWith('blob:')) {
+            noteCopy.audioUrl = null;
+        }
+        notesToStore.set(id, noteCopy);
+    });
+    localStorage.setItem('voiceNotes', JSON.stringify(Array.from(notesToStore.entries())));
     localStorage.setItem('voiceProjects', JSON.stringify(Array.from(this.projects.entries())));
   }
 
@@ -367,8 +454,14 @@ class VoiceNotesApp {
       title: 'Untitled Note',
       rawTranscription: '',
       polishedNote: '',
+      sections: [{ type: 'Verse', content: '' }],
+      editorFormat: 'structured',
       timestamp: Date.now(),
       projectId: null,
+      audioUrl: null,
+      audioDuration: null,
+      audioData: null,
+      audioMimeType: null,
     };
     this.notes.set(newNote.id, newNote);
     this.setActiveNote(newNote.id);
@@ -381,21 +474,22 @@ class VoiceNotesApp {
       if (!noteId || !this.notes.has(noteId)) {
         this.currentNoteId = null;
         this.editorTitle.textContent = '';
-        this.rawTranscription.innerHTML = '';
-        this.polishedNote.innerHTML = '';
+        this.renderNoteContent(null);
         return;
       }
 
       this.currentNoteId = noteId;
       const note = this.notes.get(noteId)!;
 
-      this.editorTitle.textContent = note.title;
-      this.rawTranscription.innerHTML = marked.parse(note.rawTranscription) as string;
-      this.polishedNote.innerHTML = marked.parse(note.polishedNote) as string;
+      // Backwards compatibility for notes saved before format toggle
+      if (!note.editorFormat) {
+          note.editorFormat = 'structured';
+          note.sections = [{ type: 'Verse', content: note.polishedNote }];
+      }
 
+      this.editorTitle.textContent = note.title;
       this.updatePlaceholderVisibility(this.editorTitle);
-      this.updatePlaceholderVisibility(this.rawTranscription);
-      this.updatePlaceholderVisibility(this.polishedNote);
+      this.renderNoteContent(note);
       this.renderSidebar();
   }
   
@@ -405,8 +499,21 @@ class VoiceNotesApp {
       if (note) {
           const newTitle = this.editorTitle.textContent?.trim() || 'Untitled Note';
           note.title = newTitle;
-          note.polishedNote = this.polishedNote.innerText; // Use innerText to get raw text
-          note.rawTranscription = this.rawTranscription.innerText;
+
+          if (note.editorFormat === 'structured') {
+            const newSections: NoteSection[] = [];
+            const cards = this.songStructureEditor.querySelectorAll('.song-section-card');
+            cards.forEach(card => {
+              const type = card.querySelector('.section-type-btn span')?.textContent || 'Verse';
+              const content = (card.querySelector('.section-content') as HTMLDivElement).innerText;
+              newSections.push({ type, content });
+            });
+            note.sections = newSections;
+            note.polishedNote = this.flattenSections(newSections); // Update snippet
+          } else {
+            note.polishedNote = this.openFormatContent.innerText;
+          }
+          
           note.timestamp = Date.now();
           this.saveDataToStorage();
           this.renderSidebar(); // Re-render to update titles and order
@@ -416,6 +523,12 @@ class VoiceNotesApp {
   private deleteNote(noteId: string): void {
     if (!this.notes.has(noteId)) return;
     
+    // Clean up blob URL from memory if it exists
+    const noteToDelete = this.notes.get(noteId);
+    if (noteToDelete && noteToDelete.audioUrl) {
+        URL.revokeObjectURL(noteToDelete.audioUrl);
+    }
+
     this.notes.delete(noteId);
 
     if (this.currentNoteId === noteId) {
@@ -447,331 +560,807 @@ class VoiceNotesApp {
         if (this.currentNoteId === noteId) {
             this.editorTitle.textContent = note.title;
         }
+        if (this.appContainer.classList.contains('list-view-active')) {
+            this.renderNotesList();
+        }
     }
   }
+  
+  private flattenSections(sections: NoteSection[]): string {
+    return sections.map(s => `[${s.type}]\n${s.content}`).join('\n\n');
+  }
 
-  private addNoteToProject(noteId: string, projectId: string): void {
-      const note = this.notes.get(noteId);
-      if (!note || !this.projects.has(projectId)) return;
+  // --- Editor and Content Rendering ---
+  private renderNoteContent(note: Note | null): void {
+    if (!note) {
+      this.songStructureEditor.innerHTML = '';
+      this.openFormatContent.innerHTML = '';
+      this.noteArea.classList.remove('format-open');
+      this.formatToggleIcon.classList.replace('fa-list-alt', 'fa-file-alt');
+      this.renderAudioPlaybackUI(null);
+      return;
+    }
+    
+    this.renderAudioPlaybackUI(note);
 
-      note.projectId = projectId;
-      note.timestamp = Date.now();
-      this.saveDataToStorage();
-      this.renderSidebar();
+    if (note.editorFormat === 'structured') {
+      this.noteArea.classList.remove('format-open');
+      this.formatToggleIcon.classList.replace('fa-list-alt', 'fa-file-alt');
+      this.songStructureEditor.innerHTML = ''; // Clear previous content
+      note.sections.forEach((section, index) => {
+        const card = this.createSectionCard(section, index);
+        this.songStructureEditor.appendChild(card);
+      });
+    } else {
+      this.noteArea.classList.add('format-open');
+      this.formatToggleIcon.classList.replace('fa-file-alt', 'fa-list-alt');
+      this.openFormatContent.innerText = note.polishedNote;
+    }
   }
   
-  private createNewProjectFromContext(noteId: string): void {
-      const projectName = prompt("Enter new project name:");
-      if (projectName && projectName.trim() !== '') {
-          const newProject: Project = {
-              id: `proj_${Date.now()}`,
-              name: projectName.trim()
-          };
-          this.projects.set(newProject.id, newProject);
-          this.addNoteToProject(noteId, newProject.id);
+  private handleFormatToggle(): void {
+      if (!this.currentNoteId) return;
+      const note = this.notes.get(this.currentNoteId);
+      if (!note) return;
+
+      this.updateCurrentNoteContent(); // Save current state before switching
+
+      if (note.editorFormat === 'structured') {
+          note.editorFormat = 'open';
+          // Convert sections to a single string for the open editor
+          note.polishedNote = this.flattenSections(note.sections);
+      } else {
+          note.editorFormat = 'structured';
+          // This is a destructive conversion - we can't perfectly parse back.
+          // For now, we'll create a single section. A more advanced implementation
+          // could try to parse [Verse] tags.
+          if (note.polishedNote && note.sections.length === 0) {
+            note.sections = [{ type: 'Verse', content: note.polishedNote }];
+          } else if (note.sections.length === 0) {
+            note.sections = [{ type: 'Verse', content: '' }];
+          }
+      }
+
+      this.saveDataToStorage();
+      this.renderNoteContent(note);
+  }
+
+  // --- Song Structure Editor ---
+  private createSectionCard(section: NoteSection, index: number): HTMLDivElement {
+    const card = document.createElement('div');
+    card.className = 'song-section-card';
+    card.dataset.index = index.toString();
+    
+    card.innerHTML = `
+      <div class="section-card-header">
+        <div class="section-type-dropdown">
+          <button class="section-type-btn" aria-haspopup="true">
+            <span>${section.type}</span>
+            <i class="fas fa-chevron-down"></i>
+          </button>
+          <ul class="section-type-menu" role="menu">
+            ${['Verse', 'Chorus', 'Bridge', 'Intro', 'Outro', 'Pre-Chorus', 'Hook', 'Solo'].map(type => `<li><button role="menuitem">${type}</button></li>`).join('')}
+          </ul>
+        </div>
+        <button class="delete-section-btn" title="Delete Section" aria-label="Delete Section">
+          <i class="fas fa-trash-alt"></i>
+        </button>
+      </div>
+      <div class="section-content" contenteditable="true" placeholder="Start writing..."></div>
+    `;
+
+    (card.querySelector('.section-content') as HTMLDivElement)!.innerText = section.content;
+
+    return card;
+  }
+  
+  private addSection(type = 'Verse', content = ''): void {
+      if (!this.currentNoteId) return;
+      const note = this.notes.get(this.currentNoteId);
+      if (!note || note.editorFormat !== 'structured') return;
+
+      const newSection: NoteSection = { type, content };
+      note.sections.push(newSection);
+      
+      const newCard = this.createSectionCard(newSection, note.sections.length - 1);
+      this.songStructureEditor.appendChild(newCard);
+      
+      this.updateCurrentNoteContent();
+  }
+
+  private handleSectionEditorClick(e: Event): void {
+    const target = e.target as HTMLElement;
+    const card = target.closest<HTMLElement>('.song-section-card');
+    if (!card) return;
+    
+    const index = parseInt(card.dataset.index!, 10);
+
+    // Toggle dropdown
+    if (target.closest('.section-type-btn')) {
+      target.closest('.section-type-dropdown')?.classList.toggle('open');
+    }
+    
+    // Handle dropdown item selection
+    if (target.matches('.section-type-menu button')) {
+      const newType = target.textContent!;
+      const note = this.notes.get(this.currentNoteId!);
+      if (note && note.sections[index]) {
+        note.sections[index].type = newType;
+        card.querySelector('.section-type-btn span')!.textContent = newType;
+        this.updateCurrentNoteContent();
+      }
+      target.closest('.section-type-dropdown')?.classList.remove('open');
+    }
+
+    // Handle delete button
+    if (target.closest('.delete-section-btn')) {
+      const note = this.notes.get(this.currentNoteId!);
+      if (note && note.sections[index]) {
+        note.sections.splice(index, 1);
+        card.remove();
+        // Re-index remaining cards
+        this.songStructureEditor.querySelectorAll<HTMLDivElement>('.song-section-card').forEach((c, i) => c.dataset.index = i.toString());
+        this.updateCurrentNoteContent();
+      }
+    }
+  }
+  
+  // --- Notes List View ---
+  private renderNotesList(): void {
+      this.notesListContent.innerHTML = '';
+      const notesArray = [...this.notes.values()].sort((a,b) => b.timestamp - a.timestamp);
+
+      if (notesArray.length === 0) {
+        this.notesListContent.innerHTML = `
+          <div class="placeholder-content">
+              <p>No Ideas Yet</p>
+              <span>Click the button in the bottom right to create a new note.</span>
+          </div>`;
+        return;
+      }
+      
+      // For now, just one group. Can expand later with date grouping.
+      const group = document.createElement('div');
+      group.className = 'notes-group';
+      group.innerHTML = `<h2 class="notes-group-title">All Ideas</h2>`;
+      const grid = document.createElement('div');
+      grid.className = 'notes-grid';
+
+      notesArray.forEach(note => {
+          const card = document.createElement('div');
+          card.className = 'note-card';
+          card.dataset.noteId = note.id;
+          
+          const snippet = note.editorFormat === 'open' ? note.polishedNote : this.flattenSections(note.sections);
+
+          card.innerHTML = `
+            <div class="note-card-content">
+              <div class="note-card-title">${note.title}</div>
+              <div class="note-card-snippet">${snippet.replace(/\n/g, ' ')}</div>
+            </div>
+          `;
+          
+          card.addEventListener('click', () => {
+              this.setActiveNote(note.id);
+              this.setActiveView('editor');
+          });
+
+          // Long-press and context menu for list view cards
+          card.addEventListener('contextmenu', (e) => this.showNoteContextMenu(e as MouseEvent, note.id));
+          card.addEventListener('touchstart', (e) => this.handleNoteTouchStart(e as TouchEvent, note.id), { passive: false });
+          card.addEventListener('touchend', () => this.handleNoteTouchEnd());
+          card.addEventListener('touchmove', () => this.handleNoteTouchEnd());
+
+          grid.appendChild(card);
+      });
+      
+      group.appendChild(grid);
+      this.notesListContent.appendChild(group);
+  }
+
+  private handleIdeaTabClick(e: MouseEvent): void {
+      const target = e.target as HTMLElement;
+      const button = target.closest<HTMLButtonElement>('.idea-tab-btn');
+      if (button && !button.classList.contains('active')) {
+          this.ideasTabsContainer.querySelector('.active')?.classList.remove('active');
+          button.classList.add('active');
+          this.activeIdeaTab = button.dataset.tab!;
+          // TODO: Implement filtering based on tab
+          this.renderNotesList();
       }
   }
 
-  private updatePlaceholderVisibility(element: HTMLElement): void {
-    const placeholder = element.getAttribute('placeholder');
-    if (!placeholder) return;
-    if (element.textContent?.trim() === '') {
-      element.classList.add('placeholder-active');
-    } else {
-      element.classList.remove('placeholder-active');
+
+  // --- Audio Recording & Processing ---
+  private async requestMicrophoneAndStart(): Promise<void> {
+    try {
+        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.startRecording();
+    } catch (err) {
+        console.error('Error accessing microphone:', err);
+        const errName = (err as Error).name;
+        if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+            this.recordingStatus.innerHTML = 'Microphone access denied. <br> Please enable it in your browser settings to record.';
+        } else {
+            this.recordingStatus.textContent = 'Could not access microphone.';
+        }
     }
   }
 
-  // --- Recording Logic ---
   private async toggleRecording(): Promise<void> {
     if (this.isRecording) {
-      this.stopRecording();
+      // Stop logic
+      if (this.mediaRecorder) {
+        this.mediaRecorder.stop();
+      }
+      this.isRecording = false;
+      this.updateRecordingUI(false);
+      this.stopLiveWaveform();
+      this.stopTimer();
+
+      if (this.activeView === 'lyriq') {
+          this.syncLyrics();
+      }
     } else {
-      await this.startRecording();
+      // Start logic
+      if (navigator.permissions?.query) { // Optional chaining for safety
+        try {
+            const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+            if (permissionStatus.state === 'denied') {
+                this.recordingStatus.innerHTML = 'Microphone access is blocked. <br> Please enable it in your browser settings to record.';
+                return; 
+            }
+            await this.requestMicrophoneAndStart();
+        } catch(e) {
+            console.error("Permissions API error, falling back:", e);
+            await this.requestMicrophoneAndStart();
+        }
+      } else {
+          await this.requestMicrophoneAndStart();
+      }
     }
   }
 
   private async startRecording(): Promise<void> {
-    if (!this.hasAttemptedPermission) {
-      this.hasAttemptedPermission = true;
-      try {
-        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (err) {
-        console.error('Microphone access denied:', err);
-        this.recordingStatus.textContent = 'Microphone access denied.';
-        return;
-      }
-    }
-
     if (!this.stream) {
+        console.error("No audio stream available.");
         this.recordingStatus.textContent = 'Could not start recording.';
         return;
     }
-
-    this.isRecording = true;
-    this.recordButton.classList.add('recording');
-    this.lyriqRecordBtn.classList.add('recording');
-    this.recordButton.title = 'Stop Recording';
-    this.lyriqRecordBtn.title = 'Stop Recording';
-    this.recordingInterface.classList.add('is-live');
-    this.liveRecordingTitle.style.display = 'block';
-    this.liveWaveformCanvas.style.display = 'block';
-    this.liveRecordingTimerDisplay.style.display = 'block';
     
     this.audioChunks = [];
-    this.mediaRecorder = new MediaRecorder(this.stream);
-    this.mediaRecorder.ondataavailable = (event) => this.handleAudioData(event);
-    this.mediaRecorder.onstop = () => this.processAudio();
-    this.mediaRecorder.start();
+    try {
+        this.mediaRecorder = new MediaRecorder(this.stream);
+        this.mediaRecorder.ondataavailable = (event) => {
+          this.audioChunks.push(event.data);
+        };
+    
+        this.mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+          this.audioChunks = [];
+          
+          if (audioBlob.size < 1000) { // Guard against empty recordings
+            this.setFinalStatus('Recording too short.', true);
+            return;
+          }
 
-    // Start live visualization
-    this.startLiveVisualization();
+          if (!this.currentNoteId) {
+              await this.createNewNote();
+          }
+
+          const note = this.notes.get(this.currentNoteId!);
+          if (note) {
+              // Revoke old URL if it exists to free memory
+              if (note.audioUrl) {
+                  URL.revokeObjectURL(note.audioUrl);
+              }
+              note.audioUrl = URL.createObjectURL(audioBlob);
+              note.audioMimeType = audioBlob.type;
+              note.audioData = await this.blobToBase64(audioBlob);
+              
+              try {
+                  note.audioDuration = await this.getAudioDuration(note.audioUrl);
+                  this.saveDataToStorage();
+                  this.renderAudioPlaybackUI(note); // Render immediately with audio present
+              } catch (error) {
+                  console.error("Failed to get audio duration:", error);
+                  // Don't show the player if we can't get duration, but proceed with transcription
+              }
+          }
+          
+          await this.transcribeAndProcess(audioBlob);
+        };
+    
+        this.mediaRecorder.start();
+        this.isRecording = true;
+        this.updateRecordingUI(true);
+        this.startLiveWaveform();
+        this.startTimer();
+
+    } catch (error) {
+        console.error("Error creating MediaRecorder:", error);
+        this.recordingStatus.textContent = 'Recording failed to start.';
+        this.isRecording = false;
+        this.updateRecordingUI(false);
+    }
   }
 
-  private stopRecording(): void {
-    if (this.mediaRecorder && this.isRecording) {
-      this.mediaRecorder.stop();
-      this.isRecording = false;
-      this.recordButton.classList.remove('recording');
-      this.lyriqRecordBtn.classList.remove('recording');
-      this.recordButton.title = 'Start Recording';
-      this.lyriqRecordBtn.title = 'Start Recording';
-      this.recordingInterface.classList.remove('is-live');
-      this.liveRecordingTitle.style.display = 'none';
-      this.liveWaveformCanvas.style.display = 'none';
-      this.liveRecordingTimerDisplay.style.display = 'none';
+  private async transcribeAndProcess(audioBlob: Blob): Promise<void> {
+    if (!this.currentNoteId) return;
+
+    document.body.classList.add('is-processing');
+    this.recordingStatus.textContent = 'Transcribing...';
+    
+    try {
+      const base64Audio = await this.blobToBase64(audioBlob);
+      const audioPart = {
+        inlineData: {
+          mimeType: audioBlob.type,
+          data: base64Audio,
+        },
+      };
+
+      const response = await this.genAI.models.generateContent({
+        model: MODEL_NAME,
+        contents: {
+          parts: [
+            audioPart,
+            { text: `
+              Transcribe the following audio recording of a musician thinking out loud.
+              The audio may contain singing, humming, speech, and musical instruments.
+              Provide a raw, literal transcription.
+            `},
+          ]
+        },
+      });
+
+      const rawTranscription = response.text;
       
-      // Stop live visualization
-      this.stopLiveVisualization();
-      this.stream?.getTracks().forEach((track) => track.stop());
-      this.stream = null;
-      this.hasAttemptedPermission = false;
+      const note = this.notes.get(this.currentNoteId)!;
+      note.rawTranscription = rawTranscription;
+      this.recordingStatus.textContent = 'Polishing note...';
+
+      await this.polishNoteWithAI(note);
+
+    } catch (error) {
+      console.error('Error during transcription/processing:', error);
+      this.setFinalStatus('Error processing audio.', true);
     }
   }
 
-  private handleAudioData(event: BlobEvent): void {
-    if (event.data.size > 0) {
-      this.audioChunks.push(event.data);
-    }
-  }
-
-  private async processAudio(): Promise<void> {
-    if (this.audioChunks.length === 0) {
-        this.recordingStatus.textContent = "No audio recorded.";
-        return;
-    }
-
-    this.recordingStatus.textContent = 'Processing...';
-    const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-    const reader = new FileReader();
-    reader.readAsDataURL(audioBlob);
-    reader.onloadend = async () => {
-        const base64Audio = (reader.result as string).split(',')[1];
-        
-        try {
-            this.recordingStatus.textContent = 'Transcribing...';
-            const audioPart = { inlineData: { mimeType: 'audio/webm', data: base64Audio } };
-            const prompt = `Transcribe the following audio recording. The transcription should be as accurate as possible, preserving the speaker's original words and phrasing.`;
-            
-            const response = await this.genAI.models.generateContent({
+  private async polishNoteWithAI(note: Note): Promise<void> {
+      try {
+          const response = await this.genAI.models.generateContent({
               model: MODEL_NAME,
-              contents: { parts: [audioPart, { text: prompt }] },
-            });
-            const transcription = response.text;
-            this.rawTranscription.innerHTML = marked.parse(transcription) as string;
-            this.updateCurrentNoteContent();
+              contents: {
+                parts: [{ text: `
+                    You are an expert musical assistant. A songwriter has provided a raw transcription from a voice memo.
+                    Your task is to analyze the transcription and structure it into a clear, organized format for songwriting.
+                    
+                    Follow these rules:
+                    1.  Identify distinct sections (e.g., Verse, Chorus, Bridge, etc.). If the structure isn't clear, use logical groupings like "Idea 1", "Idea 2".
+                    2.  Format the output as a JSON object that is an array of "NoteSection" objects.
+                    3.  Each NoteSection object must have two properties: "type" (a string, e.g., "Verse") and "content" (a string with the lyrics/notes for that section).
+                    4.  Clean up the content: remove filler words (um, uh), correct obvious transcription errors, and format lyrics cleanly. Preserve the core creative ideas.
+                    5.  Do NOT add any new lyrics or ideas. Stick to the source material.
+                    6.  If the transcription is very short or simple, you can create a single section (e.g., "Verse" or "Lyric Idea").
+                    
+                    RAW TRANSCRIPTION:
+                    "${note.rawTranscription}"
+                `}]
+              },
+              config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      type: { type: Type.STRING },
+                      content: { type: Type.STRING }
+                    },
+                    required: ["type", "content"]
+                  }
+                }
+              }
+          });
 
-            this.recordingStatus.textContent = 'Polishing note...';
-            const polishPrompt = `Take the following raw transcription and turn it into a well-structured, polished note. Correct any grammatical errors, improve sentence flow, and organize the content into a clear and concise format. Use markdown for formatting (headings, lists, bold text, etc.) where appropriate. Here is the transcription:\n\n${transcription}`;
-            
-            const polishedResponse = await this.genAI.models.generateContent({
-              model: MODEL_NAME,
-              contents: polishPrompt
-            });
-            const polishedNoteText = polishedResponse.text;
+          const jsonString = response.text;
+          const structuredResult = JSON.parse(jsonString);
 
-            this.polishedNote.innerHTML = marked.parse(polishedNoteText) as string;
-            this.updateCurrentNoteContent();
-            this.recordingStatus.textContent = 'Ready to record';
+          note.sections = structuredResult;
+          note.polishedNote = this.flattenSections(note.sections);
+          note.timestamp = Date.now();
+          
+          this.saveDataToStorage();
+          this.setActiveNote(note.id); // Re-render the editor with new content
+          this.renderSidebar(); // Update sidebar with new timestamp
+          this.setFinalStatus('Note polished successfully!');
 
-        } catch (error) {
-            console.error('Error with Generative AI:', error);
-            this.recordingStatus.textContent = 'Error processing audio. Please try again.';
-        }
-    };
+      } catch (error) {
+          console.error('Error polishing note:', error);
+          this.setFinalStatus('Could not polish note.', true);
+          // Fallback to raw transcription
+          note.polishedNote = note.rawTranscription;
+          note.sections = [{ type: 'Verse', content: note.rawTranscription }];
+          this.saveDataToStorage();
+          this.setActiveNote(note.id);
+      }
+  }
+  
+  private updateRecordingUI(isRecording: boolean): void {
+    document.body.classList.toggle('is-recording', isRecording);
+    this.recordButton.classList.toggle('recording', isRecording);
+    this.lyriqModalRecordBtn.classList.toggle('recording', isRecording);
+    this.lyriqVocalIndicator.classList.toggle('recording', isRecording);
+    
+    const recordIcon = this.recordButton.querySelector('.fa-microphone') as HTMLElement;
+    const stopIcon = this.recordButton.querySelector('.fa-stop') as HTMLElement;
+    
+    if (isRecording) {
+      recordIcon.style.display = 'none';
+      stopIcon.style.display = 'inline-block';
+      this.recordingStatus.textContent = 'Recording...';
+    } else {
+      recordIcon.style.display = 'inline-block';
+      stopIcon.style.display = 'none';
+      this.recordingStatus.textContent = 'Processing...';
+    }
   }
 
-  // --- Live Recording Visualization ---
-  private startLiveVisualization(): void {
+  // --- Live Waveform ---
+  private startLiveWaveform(): void {
     if (!this.stream) return;
-    this.audioContext = new AudioContext();
-    this.analyserNode = this.audioContext.createAnalyser();
+
+    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const source = this.audioContext.createMediaStreamSource(this.stream);
+    this.analyserNode = this.audioContext.createAnalyser();
+    this.analyserNode.fftSize = 2048;
     source.connect(this.analyserNode);
-    this.analyserNode.fftSize = 256;
-    const bufferLength = this.analyserNode.frequencyBinCount;
-    this.waveformDataArray = new Uint8Array(bufferLength);
-    
-    this.recordingStartTime = Date.now();
-    this.timerIntervalId = window.setInterval(() => this.updateTimer(), 10);
-    this.drawWaveform();
-  }
-  
-  private stopLiveVisualization(): void {
-      if (this.waveformDrawingId) {
-        cancelAnimationFrame(this.waveformDrawingId);
-        this.waveformDrawingId = null;
+
+    this.waveformDataArray = new Uint8Array(this.analyserNode.frequencyBinCount);
+
+    const draw = () => {
+      if (!this.isRecording || !this.analyserNode || !this.waveformDataArray || !this.liveWaveformCtx) {
+        return;
       }
-      if (this.timerIntervalId) {
-        clearInterval(this.timerIntervalId);
-        this.timerIntervalId = null;
-      }
-      this.audioContext?.close();
-  }
-  
-  private drawWaveform(): void {
-    if (!this.isRecording || !this.liveWaveformCtx || !this.analyserNode || !this.waveformDataArray) return;
+      
+      this.analyserNode.getByteTimeDomainData(this.waveformDataArray);
+      
+      const canvas = this.liveWaveformCtx.canvas;
+      this.liveWaveformCtx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      const isDarkMode = !document.body.classList.contains('light-mode');
+      this.liveWaveformCtx.strokeStyle = isDarkMode ? '#82aaff' : '#007AFF';
+      this.liveWaveformCtx.lineWidth = 2;
 
-    this.waveformDrawingId = requestAnimationFrame(() => this.drawWaveform());
-    this.analyserNode.getByteTimeDomainData(this.waveformDataArray);
+      this.liveWaveformCtx.beginPath();
+      const sliceWidth = canvas.width * 1.0 / this.waveformDataArray.length;
+      let x = 0;
 
-    const { width, height } = this.liveWaveformCanvas;
-    this.liveWaveformCtx.clearRect(0, 0, width, height);
-    
-    const isDarkMode = !document.body.classList.contains('light-mode');
-    this.liveWaveformCtx.strokeStyle = isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)';
-    this.liveWaveformCtx.lineWidth = 2;
-
-    this.liveWaveformCtx.beginPath();
-    const sliceWidth = width * 1.0 / this.waveformDataArray.length;
-    let x = 0;
-
-    for (let i = 0; i < this.waveformDataArray.length; i++) {
+      for (let i = 0; i < this.waveformDataArray.length; i++) {
         const v = this.waveformDataArray[i] / 128.0;
-        const y = v * height / 2;
+        const y = v * canvas.height / 2;
         if (i === 0) {
-            this.liveWaveformCtx.moveTo(x, y);
+          this.liveWaveformCtx.moveTo(x, y);
         } else {
-            this.liveWaveformCtx.lineTo(x, y);
+          this.liveWaveformCtx.lineTo(x, y);
         }
         x += sliceWidth;
+      }
+      
+      this.liveWaveformCtx.lineTo(canvas.width, canvas.height / 2);
+      this.liveWaveformCtx.stroke();
+      
+      this.waveformDrawingId = requestAnimationFrame(draw);
+    };
+
+    draw();
+  }
+
+  private stopLiveWaveform(): void {
+    if (this.waveformDrawingId) {
+      cancelAnimationFrame(this.waveformDrawingId);
+      this.waveformDrawingId = null;
     }
-    this.liveWaveformCtx.lineTo(this.liveWaveformCanvas.width, this.liveWaveformCanvas.height / 2);
-    this.liveWaveformCtx.stroke();
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
+    if (this.liveWaveformCtx) {
+        setTimeout(() => {
+            this.liveWaveformCtx?.clearRect(0, 0, this.liveWaveformCanvas.width, this.liveWaveformCanvas.height);
+        }, 100);
+    }
+  }
+  
+  // --- Timers ---
+  private startTimer(): void {
+    this.recordingStartTime = Date.now();
+    this.stopTimer(); // Clear any existing timer
+    
+    // If in Lyriq view, reset its timer for the new recording
+    if (this.activeView === 'lyriq') {
+        this.lyriqModalTime.textContent = '0:00';
+    }
+
+    this.timerIntervalId = window.setInterval(() => {
+      const elapsedTime = Date.now() - this.recordingStartTime;
+      
+      // Update main editor timer (with milliseconds)
+      const formattedTimeMs = this.formatTime(elapsedTime, true);
+      this.liveRecordingTimerDisplay.textContent = formattedTimeMs;
+      
+      // Also update Lyriq player timer if it's the active view (without milliseconds)
+      if (this.activeView === 'lyriq') {
+          const formattedTime = this.formatTime(elapsedTime, false);
+          this.lyriqModalTime.textContent = formattedTime;
+      }
+    }, 20); // Update frequently for smooth ms display
   }
 
-  private updateTimer(): void {
-    if (!this.isRecording) return;
-    const elapsedTime = Date.now() - this.recordingStartTime;
-    const minutes = Math.floor(elapsedTime / 60000);
-    const seconds = Math.floor((elapsedTime % 60000) / 1000);
-    const milliseconds = Math.floor((elapsedTime % 1000) / 10);
-    this.liveRecordingTimerDisplay.textContent = 
-        `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(2, '0')}`;
+  private stopTimer(): void {
+    if (this.timerIntervalId) {
+      clearInterval(this.timerIntervalId);
+      this.timerIntervalId = null;
+    }
   }
 
-  // --- Notes List View ---
-  private handleIdeaTabClick(event: MouseEvent): void {
-      const target = (event.target as HTMLElement).closest('.idea-tab-btn');
-      if (!target) return;
+  // --- Audio Playback (in Editor) ---
+  private renderAudioPlaybackUI(note: Note | null): void {
+      if (note && (note.audioUrl || note.audioData) && note.audioDuration) {
+          this.audioPlaybackContainer.style.display = 'flex';
+          this.playbackTitle.textContent = note.title;
+          this.playbackDate.textContent = new Date(note.timestamp).toLocaleDateString(undefined, {
+              month: 'long', day: 'numeric', year: 'numeric'
+          });
+          this.playbackDurationDisplay.textContent = this.formatTime(note.audioDuration);
 
-      const tabName = target.getAttribute('data-tab');
-      if (tabName) {
-          this.activeIdeaTab = tabName;
-          this.ideasTabsContainer.querySelectorAll('.idea-tab-btn').forEach(btn => btn.classList.remove('active'));
-          target.classList.add('active');
-          this.renderNotesList(); // Re-render the list based on the new tab
+          // If URL doesn't exist (e.g., from page load), create it from base64 data
+          if (!note.audioUrl && note.audioData && note.audioMimeType) {
+              const audioBlob = this.base64ToBlob(note.audioData, note.audioMimeType);
+              note.audioUrl = URL.createObjectURL(audioBlob);
+          }
+          
+          if (this.noteAudioPlayer.src !== note.audioUrl) {
+            this.noteAudioPlayer.src = note.audioUrl!;
+          }
+
+          this.isPlaybackUiActive = true;
+          this.handleNotePlaybackEnded();
+
+      } else {
+          this.audioPlaybackContainer.style.display = 'none';
+          this.isPlaybackUiActive = false;
+          if (this.noteAudioPlayer.src) {
+            this.noteAudioPlayer.pause();
+            this.noteAudioPlayer.src = '';
+          }
       }
   }
 
-  private renderNotesList(): void {
-    this.notesListContent.innerHTML = '';
-    const notesArray = [...this.notes.values()].sort((a,b) => b.timestamp - a.timestamp);
+  private toggleNotePlayback(): void {
+    if (this.noteAudioPlayer.paused) {
+        this.noteAudioPlayer.play();
+    } else {
+        this.noteAudioPlayer.pause();
+    }
+  }
 
-    if (notesArray.length === 0) {
-        this.notesListContent.innerHTML = `
-            <div class="placeholder-content">
-                <p>No Ideas Yet</p>
-                <span>Click the record button to start your first voice note.</span>
-            </div>`;
+  private seekNotePlayback(seconds: number): void {
+      this.noteAudioPlayer.currentTime = Math.max(0, this.noteAudioPlayer.currentTime + seconds);
+  }
+
+  private updatePlaybackTime(): void {
+      if (!this.isPlaybackUiActive || !isFinite(this.noteAudioPlayer.duration)) return;
+      this.playbackTimeDisplay.textContent = `${this.formatTime(this.noteAudioPlayer.currentTime * 1000)} / ${this.formatTime(this.noteAudioPlayer.duration * 1000)}`;
+  }
+  
+  private handleNotePlaybackEnded(): void {
+    this.updatePlaybackButton(false);
+    this.audioPlaybackContainer.classList.remove('state-playing');
+    this.audioPlaybackContainer.classList.add('state-pre-play');
+  }
+
+  private updatePlaybackButton(isPlaying: boolean): void {
+    if (!this.isPlaybackUiActive) return;
+    this.playbackPlayIcon.style.display = isPlaying ? 'none' : 'inline-block';
+    this.playbackPauseIcon.style.display = isPlaying ? 'inline-block' : 'none';
+    if(isPlaying) {
+        this.audioPlaybackContainer.classList.remove('state-pre-play');
+        this.audioPlaybackContainer.classList.add('state-playing');
+    }
+  }
+
+
+  // --- Lyriq Player ---
+  private loadNoteIntoLyriqPlayer(): void {
+      if (!this.currentNoteId) {
+          // If no note is active, find the most recent one
+          const sortedNotes = [...this.notes.values()].sort((a,b) => b.timestamp - a.timestamp);
+          if (sortedNotes.length > 0) {
+              this.currentNoteId = sortedNotes[0].id;
+          } else {
+              // Handle case with no notes at all
+              this.lyriqSongTitle.textContent = 'No Note Selected';
+              this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Create or select a note to see lyrics here.</p>';
+              return;
+          }
+      }
+
+      const note = this.notes.get(this.currentNoteId);
+      if (!note) return;
+
+      this.lyriqSongTitle.textContent = note.title;
+      this.lyriqSongSubtitle.textContent = new Date(note.timestamp).toLocaleDateString();
+
+      const lyricsText = note.editorFormat === 'open' ? note.polishedNote : this.flattenSections(note.sections);
+
+      if (!lyricsText.trim()) {
+        this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">This note is empty. Add some lyrics or record audio to get started.</p>';
+        this.lyricsData = [];
         return;
+      }
+      
+      // A simple placeholder for lyrics display. A real implementation would parse LRC or similar.
+      this.lyricsData = lyricsText.split('\n').map((line, index) => ({
+        time: index * 5, // Dummy timing
+        line: line.trim()
+      })).filter(l => l.line);
+
+      this.lyricsContainer.innerHTML = this.lyricsData
+        .map(l => `<p class="lyriq-line">${l.line}</p>`)
+        .join('');
+  }
+
+  private handleLyriqFileUpload(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files[0]) {
+      const file = input.files[0];
+      const url = URL.createObjectURL(file);
+      this.lyriqAudioPlayer.src = url;
+      
+      const trackButton = this.lyriqAddBeatBtn;
+      const icon = trackButton.querySelector('i');
+      const text = trackButton.querySelector('span');
+
+      if(icon) icon.className = 'fas fa-check-circle';
+      if(text) text.textContent = file.name;
+      trackButton.classList.add('active');
+    }
+  }
+
+  private toggleLyriqPlayback(): void {
+    if (!this.lyriqAudioPlayer.src) return;
+    const icon = this.lyriqModalPlayBtn.querySelector('i');
+    if (this.lyriqIsPlaying) {
+        this.lyriqAudioPlayer.pause();
+        if(icon) icon.className = 'fas fa-play';
+    } else {
+        this.lyriqAudioPlayer.play();
+        if(icon) icon.className = 'fas fa-pause';
+    }
+    this.lyriqIsPlaying = !this.lyriqIsPlaying;
+  }
+  
+  private handleLyriqMetadataLoaded(): void {
+    this.syncLyrics();
+  }
+
+  private syncLyrics(): void {
+    if (!this.lyriqAudioPlayer.duration) return;
+
+    const currentTime = this.lyriqAudioPlayer.currentTime;
+    
+    // Update timer and progress, but NOT if a recording is in progress.
+    // The recording timer will handle the UI update in that case.
+    if (!this.isRecording) {
+        this.lyriqModalTime.textContent = this.formatTime(currentTime * 1000);
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(startOfWeek.getDate() - today.getDay());
+    const progressPercent = (currentTime / this.lyriqAudioPlayer.duration) * 100;
+    this.lyriqProgressLine.style.height = `${progressPercent}%`;
 
-    const groups = {
-        today: [] as Note[],
-        yesterday: [] as Note[],
-        thisWeek: [] as Note[],
-        older: [] as Note[],
-    };
-
-    notesArray.forEach(note => {
-        const noteDate = new Date(note.timestamp);
-        noteDate.setHours(0, 0, 0, 0);
-
-        if (noteDate.getTime() === today.getTime()) {
-            groups.today.push(note);
-        } else if (noteDate.getTime() === yesterday.getTime()) {
-            groups.yesterday.push(note);
-        } else if (noteDate >= startOfWeek) {
-            groups.thisWeek.push(note);
-        } else {
-            groups.older.push(note);
+    // Find the current lyric line
+    let currentLine = -1;
+    for (let i = this.lyricsData.length - 1; i >= 0; i--) {
+        if (currentTime >= this.lyricsData[i].time) {
+            currentLine = i;
+            break;
         }
-    });
+    }
 
-    const createGroupHtml = (title: string, notes: Note[]) => {
-        if (notes.length === 0) return '';
-        return `
-            <div class="notes-group">
-                <h2 class="notes-group-title">${title}</h2>
-                <div class="notes-grid">
-                    ${notes.map(note => `
-                        <div class="note-card" data-note-id="${note.id}">
-                            <div class="note-card-title">${note.title}</div>
-                            <div class="note-card-snippet">${note.polishedNote.substring(0, 100) || 'No content'}</div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `;
-    };
-
-    let html = createGroupHtml('Today', groups.today);
-    html += createGroupHtml('Yesterday', groups.yesterday);
-    html += createGroupHtml('This Week', groups.thisWeek);
-    html += createGroupHtml('Older', groups.older);
-
-    this.notesListContent.innerHTML = html;
-
-    // Add event listeners to new cards
-    this.notesListContent.querySelectorAll('.note-card').forEach(card => {
-        card.addEventListener('click', () => {
-            const noteId = (card as HTMLElement).dataset.noteId;
-            if (noteId) {
-                this.setActiveNote(noteId);
-                this.setActiveView('editor');
+    if (currentLine !== this.lyriqCurrentLineIndex) {
+        this.lyriqCurrentLineIndex = currentLine;
+        const lines = this.lyricsContainer.querySelectorAll('.lyriq-line');
+        lines.forEach((line, index) => {
+            if (index === currentLine) {
+                line.classList.add('active');
+                line.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                line.classList.remove('active');
             }
         });
-    });
+    }
+  }
+
+  private handleLyriqEnded(): void {
+    this.lyriqIsPlaying = false;
+    const icon = this.lyriqModalPlayBtn.querySelector('i');
+    if (icon) icon.className = 'fas fa-play';
+    this.lyriqAudioPlayer.currentTime = 0;
   }
 
   // --- Context Menu ---
-  private handleNoteTouchStart(event: TouchEvent): void {
-      this.handleNoteTouchEnd(); // Clear any existing timers
-      const target = (event.target as HTMLElement).closest('.sidebar-note-item');
-      if (target) {
-          this.longPressTimer = window.setTimeout(() => {
-              this.showNoteContextMenu(event);
-              this.longPressTimer = null;
-          }, this.LONG_PRESS_DURATION);
+  private showNoteContextMenu(e: MouseEvent, explicitNoteId?: string): void {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const target = e.target as HTMLElement;
+      const noteItem = target.closest<HTMLElement>('.sidebar-note-item, .note-card');
+
+      const noteId = explicitNoteId || noteItem?.dataset.noteId;
+      if (!noteId) return;
+
+      this.contextMenu.style.top = `${e.clientY}px`;
+      this.contextMenu.style.left = `${e.clientX}px`;
+      this.contextMenu.style.display = 'block';
+
+      this.contextMenu.innerHTML = `
+        <ul class="context-menu-list">
+          <li><button class="context-menu-item" data-action="rename"><i class="fas fa-pencil-alt"></i>Rename</button></li>
+          <li class="context-menu-separator"></li>
+          <li><button class="context-menu-item delete" data-action="delete"><i class="fas fa-trash-alt"></i>Delete Note</button></li>
+        </ul>
+      `;
+
+      this.contextMenu.onclick = (event) => {
+          const actionTarget = (event.target as HTMLElement).closest<HTMLButtonElement>('.context-menu-item');
+          if (actionTarget) {
+              const action = actionTarget.dataset.action;
+              if (action === 'delete') {
+                  if (confirm('Are you sure you want to delete this note?')) {
+                      if (noteItem && noteItem.classList.contains('note-card')) {
+                          noteItem.classList.add('deleting');
+                          setTimeout(() => this.deleteNote(noteId), 400);
+                      } else {
+                          this.deleteNote(noteId);
+                      }
+                  }
+              } else if (action === 'rename') {
+                  this.renameNote(noteId);
+              }
+              this.hideContextMenu();
+          }
+      };
+  }
+
+  private hideContextMenu(): void {
+      if (this.contextMenu) {
+          this.contextMenu.style.display = 'none';
       }
+  }
+
+  private handleNoteTouchStart(e: TouchEvent, explicitNoteId?: string): void {
+      this.handleNoteTouchEnd(); // Clear any existing timer
+      const target = e.target as HTMLElement;
+      const noteItem = target.closest<HTMLElement>('.sidebar-note-item, .note-card');
+      const noteId = explicitNoteId || noteItem?.dataset.noteId;
+      
+      if (!noteId) return;
+      
+      this.longPressTimer = window.setTimeout(() => {
+          e.preventDefault(); // Prevent scrolling and other default actions
+          const touch = e.touches[0];
+          this.showNoteContextMenu({
+              preventDefault: () => {},
+              stopPropagation: () => {},
+              target: touch.target,
+              clientX: touch.clientX,
+              clientY: touch.clientY,
+          } as any, noteId);
+          this.longPressTimer = null;
+      }, this.LONG_PRESS_DURATION);
   }
 
   private handleNoteTouchEnd(): void {
@@ -781,262 +1370,74 @@ class VoiceNotesApp {
       }
   }
 
-  private showNoteContextMenu(event: MouseEvent | TouchEvent): void {
-      event.preventDefault();
-      event.stopPropagation();
-      this.hideContextMenu();
 
-      const target = (event.target as HTMLElement).closest('.sidebar-note-item');
-      if (!target) return;
-      
-      const noteId = (target as HTMLElement).dataset.noteId;
-      if (!noteId) return;
-
-      this.contextMenu.innerHTML = this.createContextMenu(noteId);
-      
-      const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
-      const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
-
-      this.contextMenu.style.display = 'block';
-      const { innerWidth, innerHeight } = window;
-      const { offsetWidth, offsetHeight } = this.contextMenu;
-
-      this.contextMenu.style.left = `${Math.min(clientX, innerWidth - offsetWidth - 10)}px`;
-      this.contextMenu.style.top = `${Math.min(clientY, innerHeight - offsetHeight - 10)}px`;
-      
-      // Add event listeners for the new menu items
-      this.contextMenu.querySelector('[data-action="rename"]')?.addEventListener('click', () => this.renameNote(noteId));
-      this.contextMenu.querySelector('[data-action="new-project"]')?.addEventListener('click', () => this.createNewProjectFromContext(noteId));
-      this.contextMenu.querySelector('[data-action="delete"]')?.addEventListener('click', () => this.deleteNote(noteId));
-      this.projects.forEach(project => {
-          this.contextMenu.querySelector(`[data-project-id="${project.id}"]`)?.addEventListener('click', () => this.addNoteToProject(noteId, project.id));
-      });
-  }
-
-  private hideContextMenu(): void {
-      this.contextMenu.style.display = 'none';
-      this.contextMenu.innerHTML = '';
-  }
-
-  private createContextMenu(noteId: string): string {
-    const projectsHtml = [...this.projects.values()].map(p => `
-      <li><button class="context-menu-item" data-project-id="${p.id}">${p.name}</button></li>
-    `).join('');
-
-    return `
-      <ul class="context-menu-list">
-        <li><button class="context-menu-item" data-action="rename"><i class="fas fa-i-cursor"></i>Rename</button></li>
-        <li>
-          <button class="context-menu-item chevron"><i class="fas fa-folder-plus"></i>Add to Project</button>
-          <div class="context-submenu">
-              <ul class="context-menu-list">
-                  ${projectsHtml}
-                  ${projectsHtml ? '<div class="context-menu-separator"></div>' : ''}
-                  <li><button class="context-menu-item" data-action="new-project"><i class="fas fa-plus"></i>New Project</button></li>
-              </ul>
-          </div>
-        </li>
-        <div class="context-menu-separator"></div>
-        <li><button class="context-menu-item delete" data-action="delete"><i class="fas fa-trash-alt"></i>Delete</button></li>
-      </ul>`;
-  }
-
-  // --- Lyriq Player Logic ---
-  private async handleLyriqFileUpload(event: Event): Promise<void> {
-    const target = event.target as HTMLInputElement;
-    const file = target.files?.[0];
-    if (!file) return;
-
-    this.resetLyriqPlayer();
-    this.lyricsContainer.innerHTML = `<p class="lyriq-line placeholder">Transcribing audio...</p>`;
-    this.songTitleEl.textContent = file.name;
-    const audioURL = URL.createObjectURL(file);
-    this.lyriqAudioPlayer.src = audioURL;
-
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      await new Promise<void>((resolve, reject) => {
-        reader.onloadend = async () => {
-          try {
-            const base64Audio = (reader.result as string).split(',')[1];
-            const audioPart = { inlineData: { mimeType: file.type, data: base64Audio } };
-            
-            const response = await this.genAI.models.generateContent({
-              model: MODEL_NAME,
-              contents: { parts: [audioPart] },
-              config: {
-                systemInstruction: `You are a music transcription service. Your task is to transcribe the provided audio file into lyrics. Provide the output as a JSON array of objects. Each object should have two keys: "time" (the start time of the line in milliseconds) and "line" (the transcribed text of the lyric line).`,
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            time: { type: Type.NUMBER },
-                            line: { type: Type.STRING },
-                        }
-                    }
-                }
-              }
-            });
-
-            const jsonText = response.text.trim();
-            this.lyricsData = JSON.parse(jsonText);
-            this.renderLyrics();
-            this.setLyriqPlayerState(true);
-            resolve();
-          } catch (e) {
-            reject(e);
-          }
-        };
-        reader.onerror = (error) => reject(error);
-      });
-    } catch (error) {
-        console.error("Transcription failed:", error);
-        this.lyricsContainer.innerHTML = `<p class="lyriq-line placeholder">Failed to transcribe audio. Please try another file.</p>`;
-        this.resetLyriqPlayer();
-    }
-  }
-
-  private renderLyrics(): void {
-    if (this.lyricsData.length === 0) {
-        this.lyricsContainer.innerHTML = `<p class="lyriq-line placeholder">No lyrics found in audio.</p>`;
-        return;
-    }
-    this.lyricsContainer.innerHTML = this.lyricsData.map((lyric, index) => 
-        `<p class="lyriq-line" data-line-index="${index}">${lyric.line}</p>`
-    ).join('');
-  }
-
-  private toggleLyriqPlayback(): void {
-    if (!this.lyriqAudioPlayer.src || !this.lyriqAudioPlayer.duration) return;
-    if (this.lyriqIsPlaying) {
-        this.lyriqAudioPlayer.pause();
-    } else {
-        this.lyriqAudioPlayer.play();
-    }
-    this.lyriqIsPlaying = !this.lyriqIsPlaying;
-    this.lyriqPlayIcon.classList.toggle('fa-play', !this.lyriqIsPlaying);
-    this.lyriqPlayIcon.classList.toggle('fa-pause', this.lyriqIsPlaying);
-    this.lyriqPlayBtn.title = this.lyriqIsPlaying ? 'Pause' : 'Play';
-  }
-
-  private jumpToLyric(direction: 'prev' | 'next'): void {
-      if (this.lyricsData.length === 0) return;
-
-      let targetIndex = this.lyriqCurrentLineIndex;
-      if (direction === 'next') {
-          targetIndex = Math.min(this.lyriqCurrentLineIndex + 1, this.lyricsData.length - 1);
-      } else { // prev
-          targetIndex = Math.max(this.lyriqCurrentLineIndex - 1, 0);
-      }
-
-      if (targetIndex !== this.lyriqCurrentLineIndex) {
-          this.lyriqAudioPlayer.currentTime = this.lyricsData[targetIndex].time / 1000;
-      }
-  }
-  
-  private handleLyriqProgressScrub(event: Event): void {
-      const target = event.target as HTMLInputElement;
-      this.lyriqAudioPlayer.currentTime = parseFloat(target.value);
-  }
-  
-  private handleVolumeChange(): void {
-    this.lyriqAudioPlayer.volume = parseFloat(this.lyriqVolumeSlider.value);
-  }
-
-  private handleLyriqMetadataLoaded(): void {
-      const duration = this.lyriqAudioPlayer.duration;
-      this.lyriqProgressBar.max = String(duration);
-      const remainingTime = duration - this.lyriqAudioPlayer.currentTime;
-      this.lyriqRemainingTime.textContent = `-${this.formatTime(remainingTime)}`;
-  }
-
-  private syncLyrics(): void {
-    if (!this.lyriqIsPlaying || this.lyricsData.length === 0) return;
-
-    const currentTime = this.lyriqAudioPlayer.currentTime;
-    const duration = this.lyriqAudioPlayer.duration;
-    
-    // Update progress bar and time display
-    this.lyriqProgressBar.value = String(currentTime);
-    this.lyriqCurrentTime.textContent = this.formatTime(currentTime);
-    const remainingTime = duration - currentTime;
-    this.lyriqRemainingTime.textContent = `-${this.formatTime(remainingTime)}`;
-
-    const currentTimeMs = currentTime * 1000;
-    const newIndex = this.lyricsData.findIndex((lyric, i) => {
-        const nextLyric = this.lyricsData[i + 1];
-        return currentTimeMs >= lyric.time && (!nextLyric || currentTimeMs < nextLyric.time);
-    });
-
-    if (newIndex !== -1 && newIndex !== this.lyriqCurrentLineIndex) {
-        this.lyriqCurrentLineIndex = newIndex;
-
-        this.lyricsContainer.querySelectorAll('.lyriq-line').forEach(line => {
-            line.classList.remove('active');
+  // --- Utility functions ---
+  private getAudioDuration(url: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const audio = new Audio();
+        audio.addEventListener('loadedmetadata', () => {
+            resolve(audio.duration * 1000); // return duration in milliseconds
         });
-
-        const activeLine = this.lyricsContainer.querySelector(`[data-line-index="${newIndex}"]`);
-        if (activeLine) {
-            activeLine.classList.add('active');
-            activeLine.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-    }
+        audio.addEventListener('error', (e) => {
+            console.error("Error loading audio metadata:", e);
+            reject(new Error("Could not load audio metadata."));
+        });
+        audio.src = url; // Set src last to ensure listeners are attached
+    });
   }
 
-  private handleLyriqEnded(): void {
-      this.lyriqIsPlaying = false;
-      this.lyriqPlayIcon.classList.remove('fa-pause');
-      this.lyriqPlayIcon.classList.add('fa-play');
-      this.lyriqPlayBtn.title = 'Play';
-      this.lyriqCurrentLineIndex = -1;
-      this.lyricsContainer.querySelectorAll('.lyriq-line').forEach(line => {
-          line.classList.remove('active');
-      });
-  }
-
-  private formatTime(seconds: number): string {
-      const min = Math.floor(seconds / 60);
-      const sec = Math.floor(seconds % 60);
-      return `${min}:${String(sec).padStart(2, '0')}`;
+  private async blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = (reader.result as string).split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   }
   
-  private resetLyriqPlayer(): void {
-    if (this.lyriqIsPlaying) {
-        this.toggleLyriqPlayback();
+  private base64ToBlob(base64: string, mimeType: string): Blob {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
-    this.lyriqAudioPlayer.src = '';
-    this.lyriqAudioPlayer.removeAttribute('src');
-    this.lyricsData = [];
-    this.lyriqCurrentLineIndex = -1;
-    this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Upload a beat to start.</p>';
-    this.songTitleEl.textContent = '⬆ Upload Beat';
-    this.lyriqProgressBar.value = '0';
-    this.lyriqCurrentTime.textContent = '0:00';
-    this.lyriqRemainingTime.textContent = '-:--';
-    this.lyriqPlayIcon.classList.remove('fa-pause');
-    this.lyriqPlayIcon.classList.add('fa-play');
-    this.lyriqPlayBtn.title = 'Play';
-    this.lyriqShuffleBtn.classList.remove('active');
-    this.lyriqRepeatBtn.classList.remove('active');
-    this.lyriqVolumeSlider.value = '1';
-    this.lyriqAudioPlayer.volume = 1;
-    this.setLyriqPlayerState(false);
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
   }
 
-  private setLyriqPlayerState(enabled: boolean): void {
-      this.lyriqPlayBtn.disabled = !enabled;
-      this.lyriqPrevBtn.disabled = !enabled;
-      this.lyriqNextBtn.disabled = !enabled;
-      this.lyriqRecordBtn.disabled = !enabled;
-      this.lyriqShuffleBtn.disabled = !enabled;
-      this.lyriqRepeatBtn.disabled = !enabled;
-      this.lyriqProgressBar.disabled = !enabled;
-      // Volume slider should always be enabled
+  private formatTime(ms: number, includeMilliseconds: boolean = false): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60).toString();
+    const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+    if (includeMilliseconds) {
+      const milliseconds = Math.floor((ms % 1000) / 10).toString().padStart(2, '0');
+      return `${minutes.padStart(2, '0')}:${seconds}.${milliseconds}`;
+    }
+    return `${minutes.padStart(2, '0')}:${seconds}`;
+  }
+
+  private updatePlaceholderVisibility(element: HTMLElement) {
+    if (element.textContent?.trim()) {
+      element.classList.remove('placeholder-active');
+    } else {
+      element.classList.add('placeholder-active');
+    }
+  }
+
+  private setFinalStatus(message: string, isError: boolean = false): void {
+    document.body.classList.remove('is-processing');
+    this.recordingStatus.textContent = message;
+    setTimeout(() => {
+        if (!this.isRecording) {
+            this.recordingStatus.textContent = 'Ready to record';
+        }
+    }, 4000);
   }
 }
 
-// Initialize the app
-new VoiceNotesApp();
+document.addEventListener('DOMContentLoaded', () => {
+  new VoiceNotesApp();
+});

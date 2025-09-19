@@ -55,36 +55,62 @@
       </aside>
 
       <div class="main-content">
-        <div class="note-area">
-          <div class="note-header">
-             <button class="sidebar-toggle-button" id="sidebarToggleButton">
+        <header class="main-header">
+          <div class="header-left-cluster">
+            <button class="sidebar-toggle-button" id="sidebarToggleButton">
               <i class="fas fa-bars"></i>
             </button>
             <div class="editor-title" contenteditable="true" placeholder="Untitled Note">
               Untitled Note
             </div>
-            <div class="tab-navigation-container">
-              <div class="tab-navigation">
-                <button class="tab-button active" data-tab="note">Polished</button>
-                <button class="tab-button" data-tab="raw">Raw</button>
-                <div class="active-tab-indicator"></div>
-              </div>
-            </div>
           </div>
-
+          <div class="header-right-cluster">
+            <button class="action-button" id="formatToggleButton" title="Toggle Format">
+              <i class="fas fa-file-alt"></i>
+            </button>
+            <button class="action-button" id="themeToggleButton" title="Toggle Theme">
+              <i class="fas fa-sun"></i>
+            </button>
+            <button class="action-button" id="newButton" title="New Note / Clear">
+              <i class="fas fa-file"></i>
+            </button>
+          </div>
+        </header>
+        <div class="note-area">
           <div class="note-content-wrapper">
-            <div
-              id="polishedNote"
-              class="note-content active"
-              contenteditable="true"
-              placeholder="Your polished notes will appear here..."
-            ></div>
-            <div
-              id="rawTranscription"
-              class="note-content"
-              contenteditable="true"
-              placeholder="Raw transcription will appear here..."
-            ></div>
+            <div class="audio-playback-container" id="audioPlaybackContainer">
+              <div class="playback-info">
+                  <div class="playback-title">New Recording</div>
+                  <div class="playback-date"></div>
+                  <div class="playback-details">
+                      <span id="playbackDurationDisplay"></span>
+                      <span id="playbackTimeDisplay"></span>
+                  </div>
+              </div>
+              <div class="playback-controls">
+                  <button id="playbackRewindButton" class="playback-control-btn seek-btn" aria-label="Rewind 15 seconds">
+                      <i class="fas fa-rotate-left"></i>
+                      <span>15</span>
+                  </button>
+                  <button id="playbackPlayButton" class="playback-control-btn" aria-label="Play">
+                      <i class="fas fa-play play-icon"></i>
+                      <span class="play-text">Play</span>
+                      <i class="fas fa-pause pause-icon" style="display: none;"></i>
+                  </button>
+                  <button id="playbackForwardButton" class="playback-control-btn seek-btn" aria-label="Forward 15 seconds">
+                      <i class="fas fa-rotate-right"></i>
+                      <span>15</span>
+                  </button>
+              </div>
+              <audio id="noteAudioPlayer" style="display: none;"></audio>
+            </div>
+             <div id="songStructureEditor">
+              <!-- Song sections will be dynamically rendered here -->
+            </div>
+            <div id="openFormatEditor">
+              <div id="openFormatContent" class="section-content" contenteditable="true" placeholder="Write your lyrics here..."></div>
+            </div>
+            <button id="addSectionBtn" class="add-section-btn">add section +</button>
           </div>
         </div>
         
@@ -119,23 +145,17 @@
         </div>
 
         <div class="recording-interface">
-          <div id="liveRecordingTitle" class="live-recording-title" style="display: none">
+          <div id="liveRecordingTitle" class="live-recording-title">
             Recording
           </div>
-          <canvas id="liveWaveformCanvas" style="display: none"></canvas>
-          <div id="liveRecordingTimerDisplay" class="live-recording-timer" style="display: none">
+          <canvas id="liveWaveformCanvas"></canvas>
+          <div id="liveRecordingTimerDisplay" class="live-recording-timer">
             00:00.00
           </div>
-
           <div class="status-indicator">
             <span id="recordingStatus" class="status-text">Ready to record</span>
           </div>
-
           <div class="recording-controls">
-            <button class="action-button" id="themeToggleButton" title="Toggle Theme">
-              <i class="fas fa-sun"></i>
-            </button>
-
             <button id="recordButton" class="record-button" title="Start/Stop Recording">
               <div class="record-button-inner">
                 <i class="fas fa-microphone"></i>
@@ -148,10 +168,6 @@
               </svg>
               <span class="record-text">Record</span>
             </button>
-
-            <button class="action-button" id="newButton" title="New Note / Clear">
-              <i class="fas fa-file"></i>
-            </button>
           </div>
         </div>
         
@@ -163,45 +179,63 @@
       </div>
       
       <div class="lyriq-player-view">
-        <div class="lyriq-toolbar">
-          <label for="audioUpload" class="lyriq-upload-btn">⬆ Upload Beat</label>
-          <input id="audioUpload" type="file" accept="audio/mp3,audio/wav,audio/*" style="display:none">
-        </div>
+          <div class="lyriq-header">
+              <div class="lyriq-header-actions">
+                  <button class="lyriq-action-btn" id="lyriqUploadBtnHeader" title="Upload Beat">
+                      <i class="fas fa-arrow-up-from-bracket"></i>
+                  </button>
+                  <button class="lyriq-action-btn" title="More Options">
+                      <i class="fas fa-ellipsis"></i>
+                  </button>
+              </div>
+          </div>
       
-        <div id="lyricsContainer" class="lyriq-lyrics">
-          <p class="lyriq-line placeholder">Upload a beat to start.</p>
-        </div>
-
-        <div class="lyriq-footer">
-            <div class="lyriq-progress">
-              <span id="currentTime">0:00</span>
-              <input id="progressBar" type="range" value="0" min="0" step="0.1" disabled>
-              <span id="remainingTime">-:--</span>
-            </div>
+          <div class="lyriq-song-info">
+              <h1 id="lyriqSongTitle">Untitled Note</h1>
+              <h2 id="lyriqSongSubtitle"></h2>
+          </div>
+      
+          <div id="lyricsContainer" class="lyriq-lyrics">
+              <!-- Lyrics populated here -->
+          </div>
           
-            <div class="lyriq-main-controls">
-                <button id="shuffleBtn" class="lyriq-control-btn" title="Shuffle" disabled><i class="fas fa-shuffle"></i></button>
-                <button id="prevBtn" class="lyriq-control-btn" title="Previous" disabled><i class="fas fa-backward-step"></i></button>
-                <button id="playBtn" class="lyriq-control-btn play-pause-btn" title="Play" disabled><i class="fas fa-play"></i></button>
-                <button id="nextBtn" class="lyriq-control-btn" title="Next" disabled><i class="fas fa-forward-step"></i></button>
-                <button id="repeatBtn" class="lyriq-control-btn" title="Repeat" disabled><i class="fas fa-repeat"></i></button>
-            </div>
-
-            <div class="lyriq-sub-controls">
-                <button id="recordBtn" class="lyriq-record-btn" title="Record" disabled>
-                    <i class="fas fa-microphone"></i>
-                    <i class="fas fa-stop"></i>
-                </button>
-                <div class="lyriq-volume-control">
-                  <i class="fas fa-volume-low"></i>
-                  <input id="volumeSlider" type="range" value="1" min="0" max="1" step="0.01">
-                  <i class="fas fa-volume-high"></i>
-                </div>
-                <div class="sub-control-placeholder"></div>
-            </div>
-        </div>
+          <div class="lyriq-controls-modal">
+              <div class="lyriq-modal-handle"></div>
+              
+              <div class="lyriq-modal-upper-content">
+                  <div class="lyriq-track-info">
+                      <button class="lyriq-track-btn" id="lyriqAddBeatBtn">
+                          <i class="fas fa-music"></i>
+                          <span>Add beat</span>
+                      </button>
+                      <button class="lyriq-track-btn" id="lyriqVocalIndicator">
+                          <i class="fas fa-microphone"></i>
+                          <span>Vocal</span>
+                      </button>
+                  </div>
+                  
+                  <div class="lyriq-progress-vertical">
+                      <span id="lyriqModalTime">0:00</span>
+                      <div class="lyriq-progress-vertical-track">
+                          <div id="lyriqProgressLine" class="lyriq-progress-vertical-line"></div>
+                      </div>
+                  </div>
+              </div>
       
-        <audio id="lyriqAudio"></audio>
+              <div class="lyriq-playback-controls">
+                  <button id="lyriqVolumeBtn" class="lyriq-control-btn-round" title="Mute/Unmute">
+                      <i class="fas fa-volume-up"></i>
+                  </button>
+                  <button id="lyriqModalRecordBtn" class="lyriq-record-btn-main" title="Record">
+                      <div class="record-dot"></div>
+                  </button>
+                  <button id="lyriqModalPlayBtn" class="lyriq-control-btn-round" title="Play/Pause">
+                      <i class="fas fa-play"></i>
+                  </button>
+              </div>
+          </div>
+          <audio id="lyriqAudio"></audio>
+          <input id="audioUpload" type="file" accept="audio/mp3,audio/wav/*" style="display:none">
       </div>
 
     </div>
@@ -209,66 +243,6 @@
     <div id="contextMenu" class="context-menu"></div>
     <div id="micStatus" class="debug-panel"></div>
 
-    <script>
-      document.addEventListener("DOMContentLoaded", () => {
-        const tabNav = document.querySelector(".tab-navigation");
-        const tabButtons = tabNav.querySelectorAll(".tab-button");
-        const activeTabIndicator = tabNav.querySelector(".active-tab-indicator");
-        const noteContents = document.querySelectorAll(".note-content");
-
-        function setActiveTab(activeButton, skipAnimation = false) {
-          if (!activeButton || !activeTabIndicator) return;
-
-          tabButtons.forEach((btn) => btn.classList.remove("active"));
-          activeButton.classList.add("active");
-
-          const tabName = activeButton.getAttribute("data-tab");
-          noteContents.forEach((content) => content.classList.remove("active"));
-
-          if (tabName === "raw") {
-            document.getElementById("rawTranscription").classList.add("active");
-          } else {
-            document.getElementById("polishedNote").classList.add("active");
-          }
-
-          const originalTransition = activeTabIndicator.style.transition;
-          if (skipAnimation) {
-            activeTabIndicator.style.transition = "none";
-          } else {
-            activeTabIndicator.style.transition = "";
-          }
-
-          activeTabIndicator.style.left = `${activeButton.offsetLeft}px`;
-          activeTabIndicator.style.width = `${activeButton.offsetWidth}px`;
-
-          if (skipAnimation) {
-            activeTabIndicator.offsetHeight;
-            activeTabIndicator.style.transition = originalTransition;
-          }
-        }
-
-        tabButtons.forEach((button) => {
-          button.addEventListener("click", (e) => {
-            setActiveTab(e.currentTarget);
-          });
-        });
-
-        const initiallyActiveButton = tabNav.querySelector(".tab-button.active");
-        if (initiallyActiveButton) {
-          requestAnimationFrame(() => {
-            setActiveTab(initiallyActiveButton, true);
-          });
-        }
-
-        window.addEventListener("resize", () => {
-          requestAnimationFrame(() => {
-            const currentActiveButton = tabNav.querySelector(".tab-button.active");
-            if (currentActiveButton) {
-              setActiveTab(currentActiveButton, true);
-            }
-          });
-        });
-      });
-    </script>
+    <script type="module" src="/index.js"></script>
   </body>
 </html>
