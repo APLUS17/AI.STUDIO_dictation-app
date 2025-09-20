@@ -337,9 +337,7 @@ body {
   display: none;
 }
 
-.app-container.list-view-active .main-header,
-.app-container.list-view-active .note-area,
-.app-container.list-view-active .recording-interface {
+.app-container.list-view-active .main-content {
   display: none;
 }
 .app-container.list-view-active .notes-list-view,
@@ -853,6 +851,15 @@ body.is-recording .status-indicator {
   transform: none;
   box-shadow: none;
   border-color: transparent;
+}
+
+.main-header .action-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background-color: transparent;
+  transform: none;
+  box-shadow: none;
+  color: var(--color-text-tertiary);
 }
 
 
@@ -1428,19 +1435,27 @@ body.light-mode .list-view-new-note-fab::after {
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
-  opacity: 0.7;
+  opacity: 0.5;
   transition: opacity var(--transition-fast), color var(--transition-fast);
   padding: 0;
 }
 .lyriq-track-btn.active {
   opacity: 1;
-  color: #c792ea;
+  color: var(--color-accent-alt);
 }
 .lyriq-track-btn i {
   font-size: 1.2rem;
 }
 #lyriqVocalIndicator.recording {
     color: var(--color-recording);
+    opacity: 1;
+}
+#lyriqVocalIndicator.has-recording {
+  opacity: 0.8;
+}
+#lyriqVocalIndicator.has-recording.active {
+  opacity: 1;
+  color: var(--color-recording);
 }
 
 .lyriq-waveforms {
@@ -1450,6 +1465,7 @@ body.light-mode .list-view-new-note-fab::after {
   background-color: #1a1a1a;
   border-radius: 8px;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .lyriq-waveforms canvas {
@@ -1610,6 +1626,7 @@ body.light-mode .list-view-new-note-fab::after {
   .header-right-cluster {
     /* Actions are in the footer on mobile, but format toggle is useful in the header */
     display: flex;
+    gap: 8px;
   }
   .header-right-cluster #themeToggleButton,
   .header-right-cluster #newButton {

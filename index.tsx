@@ -30,12 +30,22 @@ interface Note {
   audioMimeType: string | null;
 }
 
+// State snapshot for undo/redo history
+interface NoteState {
+  title: string;
+  sections: NoteSection[];
+  polishedNote: string;
+  editorFormat: 'structured' | 'open';
+}
+
 interface Project {
   id: string;
   name: string;
 }
 
 type AppView = 'editor' | 'list' | 'lyriq';
+type MixerTrack = 'beat' | 'vocal';
+
 
 class VoiceNotesApp {
   // AI and Media Recording properties
@@ -61,6 +71,10 @@ class VoiceNotesApp {
   private activeIdeaTab: string = 'songs';
   private activeView: AppView = 'editor';
   
+  // Undo/Redo History
+  private noteHistories: Map<string, { undo: NoteState[], redo: NoteState[] }> = new Map();
+  private debounceTimer: number | null = null;
+  
   // DOM Elements
   private appContainer: HTMLDivElement;
   private recordButton: HTMLButtonElement;
@@ -85,7 +99,10 @@ class VoiceNotesApp {
   private addSectionBtn: HTMLButtonElement;
   private formatToggleButton: HTMLButtonElement;
   private formatToggleIcon: HTMLElement;
-  
+  private sendToLyriqButton: HTMLButtonElement;
+  private undoButton: HTMLButtonElement;
+  private redoButton: HTMLButtonElement;
+
   // Recording interface elements
   private recordingInterface: HTMLDivElement;
   private liveRecordingTitle: HTMLDivElement;
@@ -119,6 +136,7 @@ class VoiceNotesApp {
   private lyriqPlayerButton: HTMLAnchorElement;
   private audioUploadInput: HTMLInputElement;
   private lyriqAudioPlayer: HTMLAudioElement;
+  private lyriqVocalAudioPlayer: HTMLAudioElement;
   private lyricsContainer: HTMLDivElement;
   private lyriqSongTitle: HTMLHeadingElement;
   private lyriqSongSubtitle: HTMLHeadingElement;
@@ -141,14 +159,16 @@ class VoiceNotesApp {
   private vocalWaveformCtx: CanvasRenderingContext2D | null;
 
   private beatAudioBuffer: AudioBuffer | null = null;
+  private vocalAudioBuffer: AudioBuffer | null = null;
   private isDraggingModal = false;
   private modalDragStartY = 0;
   private modalDragStartTranslateY = 0;
+  private isScrubbing = false;
 
   private lyriqIsPlaying = false;
   private lyriqCurrentLineIndex = -1;
   private lyricsData: { time: number; line: string }[] = [];
-  private lastVolume = 1;
+  private activeMixerTrack: MixerTrack = 'beat';
   
   private lyriqAnimationId: number | null = null;
   private readonly PIXELS_PER_SECOND = 100;
@@ -188,6 +208,9 @@ class VoiceNotesApp {
     this.addSectionBtn = document.getElementById('addSectionBtn') as HTMLButtonElement;
     this.formatToggleButton = document.getElementById('formatToggleButton') as HTMLButtonElement;
     this.formatToggleIcon = this.formatToggleButton.querySelector('i') as HTMLElement;
+    this.sendToLyriqButton = document.getElementById('sendToLyriqButton') as HTMLButtonElement;
+    this.undoButton = document.getElementById('undoButton') as HTMLButtonElement;
+    this.redoButton = document.getElementById('redoButton') as HTMLButtonElement;
     
     // Recording UI elements
     this.recordingInterface = document.querySelector('.recording-interface') as HTMLDivElement;
@@ -221,6 +244,7 @@ class VoiceNotesApp {
     this.lyriqPlayerButton = document.getElementById('lyriqPlayerButton') as HTMLAnchorElement;
     this.audioUploadInput = document.getElementById('audioUpload') as HTMLInputElement;
     this.lyriqAudioPlayer = document.getElementById('lyriqAudio') as HTMLAudioElement;
+    this.lyriqVocalAudioPlayer = document.getElementById('lyriqVocalAudio') as HTMLAudioElement;
     this.lyricsContainer = document.getElementById('lyricsContainer') as HTMLDivElement;
     this.lyriqSongTitle = document.getElementById('lyriqSongTitle') as HTMLHeadingElement;
     this.lyriqSongSubtitle = document.getElementById('lyriqSongSubtitle') as HTMLHeadingElement;
@@ -247,6 +271,7 @@ class VoiceNotesApp {
     this.initTheme();
     this.loadDataFromStorage();
     this.updateVolumeUI();
+    this.setActiveMixerTrack('beat');
 
     // Initialize app state
     (async () => {
@@ -267,6 +292,9 @@ class VoiceNotesApp {
     this.newButton.addEventListener('click', () => this.createNewNote());
     this.themeToggleButton.addEventListener('click', () => this.toggleTheme());
     this.formatToggleButton.addEventListener('click', () => this.handleFormatToggle());
+    this.sendToLyriqButton.addEventListener('click', () => this.setActiveView('lyriq'));
+    this.undoButton.addEventListener('click', () => this.undo());
+    this.redoButton.addEventListener('click', () => this.redo());
 
     // Sidebar controls
     this.sidebarToggleButton.addEventListener('click', () => this.toggleSidebar());
@@ -280,9 +308,14 @@ class VoiceNotesApp {
     });
 
     // Editor controls
-    this.editorTitle.addEventListener('blur', () => this.updateCurrentNoteContent());
-    this.editorTitle.addEventListener('input', () => this.updatePlaceholderVisibility(this.editorTitle));
-    this.openFormatContent.addEventListener('blur', () => this.updateCurrentNoteContent());
+    this.editorTitle.addEventListener('blur', () => { this.updateCurrentNoteContent(); this.saveNoteState(); });
+    this.editorTitle.addEventListener('input', () => {
+        this.updatePlaceholderVisibility(this.editorTitle);
+        this.debouncedSaveState();
+    });
+    this.openFormatContent.addEventListener('blur', () => { this.updateCurrentNoteContent(); this.saveNoteState(); });
+    this.openFormatContent.addEventListener('input', () => this.debouncedSaveState());
+
 
     // Generic handler for all contenteditable placeholders
     this.noteArea.addEventListener('input', (e) => {
@@ -298,8 +331,15 @@ class VoiceNotesApp {
       const target = e.target as HTMLElement;
       if (target.classList.contains('section-content')) {
         this.updateCurrentNoteContent();
+        this.saveNoteState();
       }
     }, true); // Use capture phase for blur
+    this.songStructureEditor.addEventListener('input', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.classList.contains('section-content')) {
+            this.debouncedSaveState();
+        }
+    });
     this.addSectionBtn.addEventListener('click', () => this.addSection());
     
     // Notes list view controls
@@ -335,18 +375,31 @@ class VoiceNotesApp {
     this.lyriqAudioPlayer.addEventListener('loadedmetadata', () => this.handleLyriqMetadataLoaded());
     this.lyriqAudioPlayer.addEventListener('timeupdate', () => this.syncLyrics());
     this.lyriqAudioPlayer.addEventListener('ended', () => this.handleLyriqEnded());
+    
+    // Lyriq Mixer Controls
+    this.lyriqAddBeatBtn.addEventListener('click', () => this.setActiveMixerTrack('beat'));
+    this.lyriqVocalIndicator.addEventListener('click', () => this.setActiveMixerTrack('vocal'));
 
-    // Lyriq Modal Controls - Now with Mouse support
+    // Lyriq Modal Drag Controls
     this.lyriqControlsModal.addEventListener('touchstart', (e) => this.handleModalDragStart(e), { passive: true });
     document.addEventListener('touchmove', (e) => this.handleModalDragMove(e), { passive: false });
     document.addEventListener('touchend', (e) => this.handleModalDragEnd(e));
     this.lyriqControlsModal.addEventListener('mousedown', (e) => this.handleModalDragStart(e));
     document.addEventListener('mousemove', (e) => this.handleModalDragMove(e));
     document.addEventListener('mouseup', (e) => this.handleModalDragEnd(e));
+    
+    // Lyriq Waveform Scrubbing
+    this.lyriqWaveforms.addEventListener('mousedown', (e) => this.handleScrubStart(e));
+    this.lyriqWaveforms.addEventListener('touchstart', (e) => this.handleScrubStart(e), { passive: true });
+    document.addEventListener('mousemove', (e) => this.handleScrubMove(e));
+    document.addEventListener('touchmove', (e) => this.handleScrubMove(e), { passive: false });
+    document.addEventListener('mouseup', () => this.handleScrubEnd());
+    document.addEventListener('touchend', () => this.handleScrubEnd());
 
 
     // Window and global listeners
     window.addEventListener('resize', () => { this.isMobile = window.innerWidth <= 1024; });
+    window.addEventListener('keydown', (e) => this.handleKeyDown(e));
     document.addEventListener('click', (e) => {
       this.hideContextMenu();
       document.querySelectorAll('.section-type-dropdown.open').forEach(dropdown => {
@@ -513,6 +566,13 @@ class VoiceNotesApp {
       audioMimeType: null,
     };
     this.notes.set(newNote.id, newNote);
+    
+    // Initialize history for the new note
+    this.noteHistories.set(newNote.id, {
+        undo: [this.getNoteState(newNote)],
+        redo: [],
+    });
+
     this.setActiveNote(newNote.id);
     this.setActiveView('editor');
     this.saveDataToStorage();
@@ -535,11 +595,20 @@ class VoiceNotesApp {
           note.editorFormat = 'structured';
           note.sections = [{ type: 'Verse', content: note.polishedNote }];
       }
+      
+      // Initialize history for the note if it doesn't exist (e.g., from a previous session)
+      if (!this.noteHistories.has(noteId)) {
+        this.noteHistories.set(noteId, {
+            undo: [this.getNoteState(note)],
+            redo: [],
+        });
+      }
 
       this.editorTitle.textContent = note.title;
       this.updatePlaceholderVisibility(this.editorTitle);
       this.renderNoteContent(note);
       this.renderSidebar();
+      this.updateUndoRedoButtons();
   }
   
   private updateCurrentNoteContent(): void {
@@ -572,13 +641,13 @@ class VoiceNotesApp {
   private deleteNote(noteId: string): void {
     if (!this.notes.has(noteId)) return;
     
-    // Clean up blob URL from memory if it exists
+    // Clean up blob URL and history from memory
     const noteToDelete = this.notes.get(noteId);
     if (noteToDelete && noteToDelete.audioUrl) {
         URL.revokeObjectURL(noteToDelete.audioUrl);
     }
-
     this.notes.delete(noteId);
+    this.noteHistories.delete(noteId);
 
     if (this.currentNoteId === noteId) {
         const sortedNotes = [...this.notes.values()].sort((a,b) => b.timestamp - a.timestamp);
@@ -602,9 +671,12 @@ class VoiceNotesApp {
 
     const newTitle = prompt("Enter new note title:", note.title);
     if (newTitle && newTitle.trim() !== '') {
+        this.updateCurrentNoteContent(); // Save current state before renaming
+        this.saveNoteState();
         note.title = newTitle.trim();
         note.timestamp = Date.now(); // Bump timestamp to bring to top
         this.saveDataToStorage();
+        this.saveNoteState(); // Save new state after renaming
         this.renderSidebar();
         if (this.currentNoteId === noteId) {
             this.editorTitle.textContent = note.title;
@@ -654,6 +726,7 @@ class VoiceNotesApp {
       if (!note) return;
 
       this.updateCurrentNoteContent(); // Save current state before switching
+      this.saveNoteState();
 
       if (note.editorFormat === 'structured') {
           note.editorFormat = 'open';
@@ -672,6 +745,7 @@ class VoiceNotesApp {
       }
 
       this.saveDataToStorage();
+      this.saveNoteState(); // Save new state
       this.renderNoteContent(note);
   }
 
@@ -711,6 +785,9 @@ class VoiceNotesApp {
       const note = this.notes.get(this.currentNoteId);
       if (!note || note.editorFormat !== 'structured') return;
 
+      this.updateCurrentNoteContent();
+      this.saveNoteState();
+
       const newSection: NoteSection = { type, content };
       note.sections.push(newSection);
       
@@ -718,6 +795,7 @@ class VoiceNotesApp {
       this.songStructureEditor.appendChild(newCard);
       
       this.updateCurrentNoteContent();
+      this.saveNoteState();
   }
 
   private handleSectionEditorClick(e: Event): void {
@@ -734,18 +812,23 @@ class VoiceNotesApp {
     
     // Handle dropdown item selection
     if (target.matches('.section-type-menu button')) {
+      this.updateCurrentNoteContent();
+      this.saveNoteState();
       const newType = target.textContent!;
       const note = this.notes.get(this.currentNoteId!);
       if (note && note.sections[index]) {
         note.sections[index].type = newType;
         card.querySelector('.section-type-btn span')!.textContent = newType;
         this.updateCurrentNoteContent();
+        this.saveNoteState();
       }
       target.closest('.section-type-dropdown')?.classList.remove('open');
     }
 
     // Handle delete button
     if (target.closest('.delete-section-btn')) {
+      this.updateCurrentNoteContent();
+      this.saveNoteState();
       const note = this.notes.get(this.currentNoteId!);
       if (note && note.sections[index]) {
         note.sections.splice(index, 1);
@@ -753,6 +836,7 @@ class VoiceNotesApp {
         // Re-index remaining cards
         this.songStructureEditor.querySelectorAll<HTMLDivElement>('.song-section-card').forEach((c, i) => c.dataset.index = i.toString());
         this.updateCurrentNoteContent();
+        this.saveNoteState();
       }
     }
   }
@@ -849,11 +933,7 @@ class VoiceNotesApp {
       this.updateRecordingUI(false);
       
       if (this.activeView === 'lyriq') {
-        this.stopLyriqWaveformAnimation();
-        // The main animation loop will continue if the beat is still playing
-        if (this.lyriqAudioPlayer.paused) {
-            this.toggleLyriqPlayback();
-        }
+        // this.stopLyriqWaveformAnimation(); // Removed to fix crash
       } else {
         this.stopLiveWaveform();
         this.stopTimer();
@@ -897,20 +977,28 @@ class VoiceNotesApp {
           // Clean up stream tracks
           this.stream?.getTracks().forEach(track => track.stop());
           this.stream = null;
-
-          if (this.activeView === 'lyriq') {
-            // In Lyriq view, we don't process/save the vocal recording yet
-            // It's just for live visualization
-            return;
-          }
-
+          
           const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
           this.audioChunks = [];
-          
+
           if (audioBlob.size < 1000) { // Guard against empty recordings
-            this.setFinalStatus('Recording too short.', true);
+            if (this.activeView !== 'lyriq') {
+              this.setFinalStatus('Recording too short.', true);
+            }
             return;
           }
+
+          if (this.activeView === 'lyriq') {
+              const vocalUrl = URL.createObjectURL(audioBlob);
+              if (this.lyriqVocalAudioPlayer.src) {
+                URL.revokeObjectURL(this.lyriqVocalAudioPlayer.src);
+              }
+              this.lyriqVocalAudioPlayer.src = vocalUrl;
+              this.processAndRenderVocalWaveform(audioBlob);
+              this.lyriqVocalIndicator.classList.add('has-recording');
+              return;
+          }
+
 
           if (!this.currentNoteId) {
               await this.createNewNote();
@@ -945,11 +1033,10 @@ class VoiceNotesApp {
 
         if (this.activeView === 'lyriq') {
             this.vocalWaveformCtx?.clearRect(0,0, this.vocalWaveformCanvas.width, this.vocalWaveformCanvas.height);
-            this.lyriqAudioPlayer.currentTime = 0;
+            this.updatePlayheadPosition(0);
             if (this.lyriqAudioPlayer.paused) {
                 this.toggleLyriqPlayback();
             }
-            this.startLyriqWaveformAnimation(); // This just sets up the analyser now
         } else {
             this.startLiveWaveform();
             this.startTimer();
@@ -1044,12 +1131,16 @@ class VoiceNotesApp {
 
           const jsonString = response.text;
           const structuredResult = JSON.parse(jsonString);
+          
+          this.updateCurrentNoteContent();
+          this.saveNoteState(); // Save state before AI polish
 
           note.sections = structuredResult;
           note.polishedNote = this.flattenSections(note.sections);
           note.timestamp = Date.now();
           
           this.saveDataToStorage();
+          this.saveNoteState(); // Save state after AI polish
           this.setActiveNote(note.id); // Re-render the editor with new content
           this.renderSidebar(); // Update sidebar with new timestamp
           this.setFinalStatus('Note polished successfully!');
@@ -1061,6 +1152,7 @@ class VoiceNotesApp {
           note.polishedNote = note.rawTranscription;
           note.sections = [{ type: 'Verse', content: note.rawTranscription }];
           this.saveDataToStorage();
+          this.saveNoteState(); // Save fallback state
           this.setActiveNote(note.id);
       }
   }
@@ -1311,19 +1403,21 @@ class VoiceNotesApp {
   }
 
   private toggleLyriqPlayback(): void {
-    if (!this.lyriqAudioPlayer.src || (this.isRecording && !this.lyriqIsPlaying)) return;
-
-    const icon = this.lyriqModalPlayBtn.querySelector('i');
-    if (this.lyriqIsPlaying) {
-        this.lyriqAudioPlayer.pause();
-        if(icon) icon.className = 'fas fa-play';
-        this.stopLyriqAnimation();
-    } else {
-        this.lyriqAudioPlayer.play();
-        if(icon) icon.className = 'fas fa-pause';
-        this.startLyriqAnimation();
-    }
-    this.lyriqIsPlaying = !this.lyriqIsPlaying;
+      if (!this.lyriqAudioPlayer.src) return;
+  
+      const icon = this.lyriqModalPlayBtn.querySelector('i');
+      if (this.lyriqIsPlaying) {
+          this.lyriqAudioPlayer.pause();
+          if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.pause();
+          if(icon) icon.className = 'fas fa-play';
+          this.stopLyriqAnimation();
+      } else {
+          this.lyriqAudioPlayer.play();
+          if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.play();
+          if(icon) icon.className = 'fas fa-pause';
+          this.startLyriqAnimation();
+      }
+      this.lyriqIsPlaying = !this.lyriqIsPlaying;
   }
   
   private handleLyriqMetadataLoaded(): void {
@@ -1360,40 +1454,52 @@ class VoiceNotesApp {
 
   private handleLyriqEnded(): void {
     this.lyriqIsPlaying = false;
-    this.isRecording = false;
-    this.updateRecordingUI(false);
-    this.stopLyriqWaveformAnimation();
+    if (this.isRecording) {
+      this.toggleRecording();
+    }
     this.stopLyriqAnimation();
     const icon = this.lyriqModalPlayBtn.querySelector('i');
     if (icon) icon.className = 'fas fa-play';
-    this.lyriqAudioPlayer.currentTime = 0;
+    this.updatePlayheadPosition(0);
   }
   
+  private setActiveMixerTrack(track: MixerTrack): void {
+      this.activeMixerTrack = track;
+      this.lyriqAddBeatBtn.classList.toggle('active', track === 'beat');
+      this.lyriqVocalIndicator.classList.toggle('active', track === 'vocal');
+
+      // Update slider to reflect the active track's volume
+      if (track === 'beat') {
+          this.lyriqVolumeSlider.value = this.lyriqAudioPlayer.volume.toString();
+      } else if (track === 'vocal') {
+          this.lyriqVolumeSlider.value = this.lyriqVocalAudioPlayer.volume.toString();
+      }
+      this.updateVolumeUI();
+  }
+
   private toggleLyriqMute(): void {
-    const isMuted = this.lyriqAudioPlayer.volume === 0;
-    if (isMuted) {
-        // Unmute to the last known volume.
-        this.lyriqAudioPlayer.volume = this.lastVolume;
-    } else {
-        // Mute: store current volume and set to 0.
-        this.lastVolume = this.lyriqAudioPlayer.volume;
-        this.lyriqAudioPlayer.volume = 0;
-    }
-    this.updateVolumeUI();
+      const activePlayer = this.activeMixerTrack === 'beat' ? this.lyriqAudioPlayer : this.lyriqVocalAudioPlayer;
+      activePlayer.muted = !activePlayer.muted;
+      this.updateVolumeUI();
   }
 
   private handleVolumeChange(): void {
       const newVolume = parseFloat(this.lyriqVolumeSlider.value);
-      this.lyriqAudioPlayer.volume = newVolume;
-      if (newVolume > 0) {
-          this.lastVolume = newVolume;
+      if (this.activeMixerTrack === 'beat') {
+          this.lyriqAudioPlayer.volume = newVolume;
+          this.lyriqAudioPlayer.muted = false;
+      } else {
+          this.lyriqVocalAudioPlayer.volume = newVolume;
+          this.lyriqVocalAudioPlayer.muted = false;
       }
       this.updateVolumeUI();
   }
 
   private updateVolumeUI(): void {
-      if (!this.lyriqVolumeSlider) return; // Guard for initial call
-      const volume = this.lyriqAudioPlayer.volume;
+      if (!this.lyriqVolumeSlider) return;
+      const activePlayer = this.activeMixerTrack === 'beat' ? this.lyriqAudioPlayer : this.lyriqVocalAudioPlayer;
+      const volume = activePlayer.muted ? 0 : activePlayer.volume;
+      
       this.lyriqVolumeSlider.value = volume.toString();
       
       const icon = this.lyriqVolumeBtn.querySelector('i')!;
@@ -1495,13 +1601,23 @@ class VoiceNotesApp {
 
         if (state === 'visible' && this.beatAudioBuffer) {
             // Recalculate canvas size if it becomes fully visible
-            setTimeout(() => this.renderBeatWaveform(), 50); // allow transition to start
+            setTimeout(() => {
+              this.renderBeatWaveform();
+              this.renderVocalWaveform();
+            }, 50); // allow transition to start
         }
     }
   }
 
   private getPointerY(e: MouseEvent | TouchEvent): number {
     return e.type.startsWith('touch') ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+  }
+  
+  private getPointerX(e: MouseEvent | TouchEvent): number {
+    const target = e.target as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    const x = e.type.startsWith('touch') ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
+    return x - rect.left;
   }
 
   private handleModalDragStart(e: MouseEvent | TouchEvent): void {
@@ -1566,24 +1682,92 @@ class VoiceNotesApp {
       }
   }
 
-  private renderBeatWaveform(): void {
-    if (!this.beatAudioBuffer || !this.beatWaveformCtx) return;
-    const canvas = this.beatWaveformCtx.canvas;
+  private handleScrubStart(e: MouseEvent | TouchEvent): void {
+    if (!this.beatAudioBuffer) return;
+    this.isScrubbing = true;
+    this.handleScrubMove(e); // Seek immediately on click
+  }
+
+  private handleScrubMove(e: MouseEvent | TouchEvent): void {
+    if (!this.isScrubbing || !this.beatAudioBuffer) return;
+
+    // Prevent text selection during drag on desktop and default scroll on mobile.
+    e.preventDefault();
     
-    // Don't resize canvas width here, it's set on file load.
-    // Only resize height based on its container.
+    const waveformRect = this.lyriqWaveforms.getBoundingClientRect();
+    const x = e.type.startsWith('touch') ? (e as TouchEvent).touches[0].clientX - waveformRect.left : (e as MouseEvent).clientX - waveformRect.left;
+    const viewWidth = waveformRect.width;
+
+    // Calculate time based on the current scroll position (derived from currentTime)
+    // and the click offset from the center playhead.
+    const currentPixelOffset = this.lyriqAudioPlayer.currentTime * this.PIXELS_PER_SECOND;
+
+    // The pixel offset of the click from the center playhead
+    const pixelOffsetFromPlayhead = x - (viewWidth / 2);
+    
+    // The target pixel position on the entire timeline
+    const targetPixel = currentPixelOffset + pixelOffsetFromPlayhead;
+
+    // Convert target pixel back to time
+    const targetTime = targetPixel / this.PIXELS_PER_SECOND;
+
+    this.updatePlayheadPosition(targetTime);
+  }
+  
+  private handleScrubEnd(): void {
+    this.isScrubbing = false;
+  }
+
+  private updatePlayheadPosition(timeInSeconds: number): void {
+    if (!this.lyriqAudioPlayer.duration || !isFinite(this.lyriqAudioPlayer.duration)) return;
+
+    // Clamp the time to valid bounds
+    const newTime = Math.max(0, Math.min(timeInSeconds, this.lyriqAudioPlayer.duration));
+
+    // Only update if the change is significant to avoid stuttering on small drags.
+    if (Math.abs(newTime - this.lyriqAudioPlayer.currentTime) > 0.01) {
+      this.lyriqAudioPlayer.currentTime = newTime;
+      if (this.lyriqVocalAudioPlayer.src) {
+          this.lyriqVocalAudioPlayer.currentTime = newTime;
+      }
+    }
+    
+    // Update visual transform of waveforms
+    const currentPixelOffset = newTime * this.PIXELS_PER_SECOND;
+    const viewWidth = this.lyriqWaveforms.getBoundingClientRect().width;
+    const translateX = (viewWidth / 2) - currentPixelOffset;
+
+    this.beatWaveformCanvas.style.transform = `translateX(${translateX}px)`;
+    this.vocalWaveformCanvas.style.transform = `translateX(${translateX}px)`;
+    
+    // Update time display
+    this.lyriqModalTime.textContent = this.formatTime(newTime * 1000).split('.')[0];
+  }
+
+  private renderBeatWaveform(): void {
+    this.renderWaveform(this.beatAudioBuffer, this.beatWaveformCtx, '#A880F7');
+  }
+
+  private renderVocalWaveform(): void {
+    this.renderWaveform(this.vocalAudioBuffer, this.vocalWaveformCtx, '#ff453a');
+  }
+
+  private renderWaveform(buffer: AudioBuffer | null, ctx: CanvasRenderingContext2D | null, color: string): void {
+    if (!buffer || !ctx) return;
+    const canvas = ctx.canvas;
+    
     const { height } = canvas.getBoundingClientRect();
     if (canvas.height !== height) {
         canvas.height = height;
     }
     
-    const data = this.beatAudioBuffer.getChannelData(0);
+    const data = buffer.getChannelData(0);
     const step = Math.ceil(data.length / canvas.width);
     const amp = canvas.height / 2;
-    this.beatWaveformCtx.clearRect(0, 0, canvas.width, canvas.height);
-    this.beatWaveformCtx.strokeStyle = '#A880F7';
-    this.beatWaveformCtx.lineWidth = 1;
-    this.beatWaveformCtx.beginPath();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
     for (let i = 0; i < canvas.width; i++) {
         let min = 1.0;
         let max = -1.0;
@@ -1592,11 +1776,26 @@ class VoiceNotesApp {
             if (datum < min) min = datum;
             if (datum > max) max = datum;
         }
-        this.beatWaveformCtx.moveTo(i, (1 + min) * amp);
-        this.beatWaveformCtx.lineTo(i, (1 + max) * amp);
+        ctx.moveTo(i, (1 + min) * amp);
+        ctx.lineTo(i, (1 + max) * amp);
     }
-    this.beatWaveformCtx.stroke();
+    ctx.stroke();
   }
+  
+  private async processAndRenderVocalWaveform(blob: Blob): Promise<void> {
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      // Use a temporary AudioContext to avoid conflicts
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      this.vocalAudioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      audioContext.close(); // Clean up immediately
+      this.renderVocalWaveform();
+    } catch (e) {
+      console.error("Error processing vocal audio file:", e);
+      this.vocalAudioBuffer = null;
+    }
+  }
+
 
   private startLyriqAnimation(): void {
       if (this.lyriqAnimationId) {
@@ -1608,35 +1807,15 @@ class VoiceNotesApp {
               this.stopLyriqAnimation();
               return;
           }
-
-          const currentTime = this.lyriqAudioPlayer.currentTime;
-          const currentPixelOffset = currentTime * this.PIXELS_PER_SECOND;
-          const viewWidth = this.lyriqWaveforms.getBoundingClientRect().width;
-          const translateX = (viewWidth / 2) - currentPixelOffset;
-
-          this.beatWaveformCanvas.style.transform = `translateX(${translateX}px)`;
-          this.vocalWaveformCanvas.style.transform = `translateX(${translateX}px)`;
           
-          this.lyriqModalTime.textContent = this.formatTime(currentTime * 1000).split('.')[0];
-
-          if (this.isRecording && this.analyserNode && this.waveformDataArray && this.vocalWaveformCtx) {
-              const xPos = currentPixelOffset;
-              this.analyserNode.getByteTimeDomainData(this.waveformDataArray);
-              let sum = 0;
-              for(let i = 0; i < this.waveformDataArray.length; i++) {
-                  sum += Math.abs(this.waveformDataArray[i] - 128);
-              }
-              const avg = sum / this.waveformDataArray.length;
-              const canvas = this.vocalWaveformCtx.canvas;
-              const { height } = canvas.getBoundingClientRect();
-              if (canvas.height !== height) canvas.height = height;
-
-              const amplitude = Math.max(2, (avg / 64) * canvas.height);
-              this.vocalWaveformCtx.fillStyle = '#ff453a';
-              const y = canvas.height / 2;
-              this.vocalWaveformCtx.fillRect(xPos, y - amplitude / 2, 2, amplitude);
+          // If the user is actively scrubbing, let handleScrubMove take over position updates
+          // to avoid conflicting state changes.
+          if (this.isScrubbing) {
+              this.lyriqAnimationId = requestAnimationFrame(animate); // Keep the loop alive
+              return;
           }
 
+          this.updatePlayheadPosition(this.lyriqAudioPlayer.currentTime);
           this.lyriqAnimationId = requestAnimationFrame(animate);
       };
 
@@ -1650,22 +1829,117 @@ class VoiceNotesApp {
       }
   }
 
-  private startLyriqWaveformAnimation(): void {
-    if (!this.stream) return;
-    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const source = this.audioContext.createMediaStreamSource(this.stream);
-    this.analyserNode = this.audioContext.createAnalyser();
-    this.analyserNode.fftSize = 256;
-    source.connect(this.analyserNode);
-    this.waveformDataArray = new Uint8Array(this.analyserNode.frequencyBinCount);
+  // --- Undo/Redo History Management ---
+  private getNoteState(note: Note): NoteState {
+    return {
+      title: note.title,
+      // Deep copy of sections array to prevent mutation issues
+      sections: JSON.parse(JSON.stringify(note.sections)),
+      polishedNote: note.polishedNote,
+      editorFormat: note.editorFormat,
+    };
+  }
+  
+  private applyNoteState(noteId: string, state: NoteState): void {
+    const note = this.notes.get(noteId);
+    if (!note) return;
+
+    note.title = state.title;
+    note.sections = JSON.parse(JSON.stringify(state.sections));
+    note.polishedNote = state.polishedNote;
+    note.editorFormat = state.editorFormat;
+
+    // If the currently active note is the one we're updating, re-render its content.
+    if (this.currentNoteId === noteId) {
+        this.editorTitle.textContent = note.title;
+        this.renderNoteContent(note);
+    }
+    
+    this.saveDataToStorage();
+    this.renderSidebar(); // Update title in sidebar
   }
 
-  private stopLyriqWaveformAnimation(): void {
-    if (this.audioContext) {
-        this.audioContext.close().catch(e => console.error(e));
-        this.audioContext = null;
-        this.analyserNode = null;
-        this.waveformDataArray = null;
+  private saveNoteState(): void {
+    if (!this.currentNoteId) return;
+    
+    this.updateCurrentNoteContent(); // Ensure latest content from DOM is in the note object
+    const note = this.notes.get(this.currentNoteId);
+    const history = this.noteHistories.get(this.currentNoteId);
+
+    if (!note || !history) return;
+    
+    const newState = this.getNoteState(note);
+    const lastState = history.undo[history.undo.length - 1];
+
+    // Avoid saving identical subsequent states
+    if (lastState && JSON.stringify(newState) === JSON.stringify(lastState)) {
+      return;
+    }
+    
+    history.undo.push(newState);
+    history.redo = []; // Clear redo stack on new action
+    this.updateUndoRedoButtons();
+  }
+
+  private debouncedSaveState = () => {
+      if (this.debounceTimer) {
+          clearTimeout(this.debounceTimer);
+      }
+      this.debounceTimer = window.setTimeout(() => {
+          this.saveNoteState();
+      }, 1000);
+  }
+
+  private undo(): void {
+    if (!this.currentNoteId) return;
+    const history = this.noteHistories.get(this.currentNoteId);
+    if (!history || history.undo.length <= 1) return; // Keep the initial state
+
+    const currentState = history.undo.pop()!;
+    history.redo.push(currentState);
+    
+    const previousState = history.undo[history.undo.length - 1];
+    this.applyNoteState(this.currentNoteId, previousState);
+    this.updateUndoRedoButtons();
+  }
+
+  private redo(): void {
+    if (!this.currentNoteId) return;
+    const history = this.noteHistories.get(this.currentNoteId);
+    if (!history || history.redo.length === 0) return;
+
+    const nextState = history.redo.pop()!;
+    history.undo.push(nextState);
+    
+    this.applyNoteState(this.currentNoteId, nextState);
+    this.updateUndoRedoButtons();
+  }
+  
+  private updateUndoRedoButtons(): void {
+      if (!this.currentNoteId) {
+          this.undoButton.disabled = true;
+          this.redoButton.disabled = true;
+          return;
+      }
+      const history = this.noteHistories.get(this.currentNoteId);
+      this.undoButton.disabled = !history || history.undo.length <= 1;
+      this.redoButton.disabled = !history || history.redo.length === 0;
+  }
+  
+  private handleKeyDown(e: KeyboardEvent): void {
+    const isModKey = e.metaKey || e.ctrlKey;
+    if (!isModKey || this.activeView !== 'editor') return;
+
+    if (e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+            this.redo();
+        } else {
+            this.undo();
+        }
+    } else if (e.key === 'y') {
+        e.preventDefault();
+        this.redo();
     }
   }
 

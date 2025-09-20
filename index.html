@@ -65,8 +65,17 @@
             </div>
           </div>
           <div class="header-right-cluster">
+            <button class="action-button" id="sendToLyriqButton" title="Open in Lyriq Player">
+              <i class="fas fa-headphones-alt"></i>
+            </button>
             <button class="action-button" id="formatToggleButton" title="Toggle Format">
               <i class="fas fa-file-alt"></i>
+            </button>
+            <button class="action-button" id="undoButton" title="Undo (Cmd/Ctrl+Z)">
+              <i class="fas fa-undo"></i>
+            </button>
+            <button class="action-button" id="redoButton" title="Redo (Cmd/Ctrl+Shift+Z)">
+              <i class="fas fa-redo"></i>
             </button>
             <button class="action-button" id="themeToggleButton" title="Toggle Theme">
               <i class="fas fa-sun"></i>
@@ -211,10 +220,10 @@
 
               <div class="lyriq-waveform-container">
                 <div class="lyriq-track-labels">
-                    <button class="lyriq-track-btn" id="lyriqAddBeatBtn">
+                    <button class="lyriq-track-btn" id="lyriqAddBeatBtn" data-track="beat">
                         <i class="fas fa-music"></i>
                     </button>
-                    <button class="lyriq-track-btn" id="lyriqVocalIndicator">
+                    <button class="lyriq-track-btn" id="lyriqVocalIndicator" data-track="vocal">
                         <i class="fas fa-microphone"></i>
                     </button>
                 </div>
@@ -241,6 +250,7 @@
               </div>
           </div>
           <audio id="lyriqAudio"></audio>
+          <audio id="lyriqVocalAudio"></audio>
           <input id="audioUpload" type="file" accept="audio/mp3,audio/wav/*" style="display:none">
       </div>
 
