@@ -69,6 +69,7 @@ class VoiceNotesApp {
   private themeToggleButton: HTMLButtonElement;
   private themeToggleIcon: HTMLElement;
   private editorTitle: HTMLDivElement;
+  private sidebar: HTMLElement;
   private sidebarToggleButton: HTMLButtonElement;
   private sidebarNewNoteButton: HTMLButtonElement;
   private allNotesButton: HTMLAnchorElement;
@@ -124,15 +125,33 @@ class VoiceNotesApp {
   private lyriqAddBeatBtn: HTMLButtonElement;
   private lyriqVocalIndicator: HTMLButtonElement;
   private lyriqModalTime: HTMLSpanElement;
-  private lyriqProgressLine: HTMLDivElement;
   private lyriqVolumeBtn: HTMLButtonElement;
+  private lyriqVolumeSlider: HTMLInputElement;
   private lyriqModalRecordBtn: HTMLButtonElement;
   private lyriqModalPlayBtn: HTMLButtonElement;
   private lyriqUploadBtnHeader: HTMLButtonElement;
+  private lyriqControlsModal: HTMLDivElement;
+  private lyriqModalHandle: HTMLDivElement;
+  private lyriqCloseBtn: HTMLButtonElement;
+  private lyriqWaveforms: HTMLDivElement;
+  private beatWaveformCanvas: HTMLCanvasElement;
+  private vocalWaveformCanvas: HTMLCanvasElement;
+  private lyriqPlayhead: HTMLDivElement;
+  private beatWaveformCtx: CanvasRenderingContext2D | null;
+  private vocalWaveformCtx: CanvasRenderingContext2D | null;
+
+  private beatAudioBuffer: AudioBuffer | null = null;
+  private isDraggingModal = false;
+  private modalDragStartY = 0;
+  private modalDragStartTranslateY = 0;
 
   private lyriqIsPlaying = false;
   private lyriqCurrentLineIndex = -1;
   private lyricsData: { time: number; line: string }[] = [];
+  private lastVolume = 1;
+  
+  private lyriqAnimationId: number | null = null;
+  private readonly PIXELS_PER_SECOND = 100;
   
   private isMobile: boolean = window.innerWidth <= 1024;
   
@@ -153,6 +172,7 @@ class VoiceNotesApp {
     this.themeToggleButton = document.getElementById('themeToggleButton') as HTMLButtonElement;
     this.themeToggleIcon = this.themeToggleButton.querySelector('i') as HTMLElement;
     this.editorTitle = document.querySelector('.editor-title') as HTMLDivElement;
+    this.sidebar = document.querySelector('.sidebar') as HTMLElement;
     this.sidebarToggleButton = document.getElementById('sidebarToggleButton') as HTMLButtonElement;
     this.sidebarNewNoteButton = document.getElementById('sidebarNewNoteButton') as HTMLButtonElement;
     this.allNotesButton = document.getElementById('allNotesButton') as HTMLAnchorElement;
@@ -207,17 +227,26 @@ class VoiceNotesApp {
     this.lyriqAddBeatBtn = document.getElementById('lyriqAddBeatBtn') as HTMLButtonElement;
     this.lyriqVocalIndicator = document.getElementById('lyriqVocalIndicator') as HTMLButtonElement;
     this.lyriqModalTime = document.getElementById('lyriqModalTime') as HTMLSpanElement;
-    this.lyriqProgressLine = document.getElementById('lyriqProgressLine') as HTMLDivElement;
     this.lyriqVolumeBtn = document.getElementById('lyriqVolumeBtn') as HTMLButtonElement;
+    this.lyriqVolumeSlider = document.getElementById('lyriqVolumeSlider') as HTMLInputElement;
     this.lyriqModalRecordBtn = document.getElementById('lyriqModalRecordBtn') as HTMLButtonElement;
     this.lyriqModalPlayBtn = document.getElementById('lyriqModalPlayBtn') as HTMLButtonElement;
     this.lyriqUploadBtnHeader = document.getElementById('lyriqUploadBtnHeader') as HTMLButtonElement;
-
+    this.lyriqControlsModal = document.getElementById('lyriqControlsModal') as HTMLDivElement;
+    this.lyriqModalHandle = document.getElementById('lyriqModalHandle') as HTMLDivElement;
+    this.lyriqCloseBtn = document.getElementById('lyriqCloseBtn') as HTMLButtonElement;
+    this.lyriqWaveforms = this.lyriqControlsModal.querySelector('.lyriq-waveforms') as HTMLDivElement;
+    this.beatWaveformCanvas = document.getElementById('beatWaveformCanvas') as HTMLCanvasElement;
+    this.vocalWaveformCanvas = document.getElementById('vocalWaveformCanvas') as HTMLCanvasElement;
+    this.lyriqPlayhead = document.getElementById('lyriqPlayhead') as HTMLDivElement;
+    this.beatWaveformCtx = this.beatWaveformCanvas.getContext('2d');
+    this.vocalWaveformCtx = this.vocalWaveformCanvas.getContext('2d');
 
     // Initial setup
     this.bindEventListeners();
     this.initTheme();
     this.loadDataFromStorage();
+    this.updateVolumeUI();
 
     // Initialize app state
     (async () => {
@@ -254,6 +283,14 @@ class VoiceNotesApp {
     this.editorTitle.addEventListener('blur', () => this.updateCurrentNoteContent());
     this.editorTitle.addEventListener('input', () => this.updatePlaceholderVisibility(this.editorTitle));
     this.openFormatContent.addEventListener('blur', () => this.updateCurrentNoteContent());
+
+    // Generic handler for all contenteditable placeholders
+    this.noteArea.addEventListener('input', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.isContentEditable) {
+            this.updatePlaceholderVisibility(target);
+        }
+    });
 
     // Song Structure Editor Controls (Event Delegation)
     this.songStructureEditor.addEventListener('click', (e) => this.handleSectionEditorClick(e));
@@ -292,14 +329,20 @@ class VoiceNotesApp {
     this.lyriqUploadBtnHeader.addEventListener('click', () => this.audioUploadInput.click());
     this.lyriqModalPlayBtn.addEventListener('click', () => this.toggleLyriqPlayback());
     this.lyriqModalRecordBtn.addEventListener('click', () => this.toggleRecording());
-    this.lyriqVolumeBtn.addEventListener('click', () => {
-        this.lyriqAudioPlayer.muted = !this.lyriqAudioPlayer.muted;
-        this.lyriqVolumeBtn.style.color = this.lyriqAudioPlayer.muted ? '#555' : '#fff';
-    });
+    this.lyriqVolumeBtn.addEventListener('click', () => this.toggleLyriqMute());
+    this.lyriqVolumeSlider.addEventListener('input', () => this.handleVolumeChange());
     
     this.lyriqAudioPlayer.addEventListener('loadedmetadata', () => this.handleLyriqMetadataLoaded());
     this.lyriqAudioPlayer.addEventListener('timeupdate', () => this.syncLyrics());
     this.lyriqAudioPlayer.addEventListener('ended', () => this.handleLyriqEnded());
+
+    // Lyriq Modal Controls - Now with Mouse support
+    this.lyriqControlsModal.addEventListener('touchstart', (e) => this.handleModalDragStart(e), { passive: true });
+    document.addEventListener('touchmove', (e) => this.handleModalDragMove(e), { passive: false });
+    document.addEventListener('touchend', (e) => this.handleModalDragEnd(e));
+    this.lyriqControlsModal.addEventListener('mousedown', (e) => this.handleModalDragStart(e));
+    document.addEventListener('mousemove', (e) => this.handleModalDragMove(e));
+    document.addEventListener('mouseup', (e) => this.handleModalDragEnd(e));
 
 
     // Window and global listeners
@@ -311,6 +354,7 @@ class VoiceNotesApp {
           dropdown.classList.remove('open');
         }
       });
+      this.handleOutsideClick(e);
     });
     
     // Context Menu Listeners (Desktop Right-Click + Mobile Long-Press)
@@ -342,6 +386,11 @@ class VoiceNotesApp {
               this.appContainer.classList.add('lyriq-player-active');
               this.lyriqPlayerButton.classList.add('active');
               this.loadNoteIntoLyriqPlayer();
+              if (this.lyriqAudioPlayer.src) {
+                this.setLyriqModalState('peeking');
+              } else {
+                this.setLyriqModalState('hidden');
+              }
               break;
           case 'editor':
               // Default state, no extra class needed
@@ -595,6 +644,7 @@ class VoiceNotesApp {
       this.noteArea.classList.add('format-open');
       this.formatToggleIcon.classList.replace('fa-file-alt', 'fa-list-alt');
       this.openFormatContent.innerText = note.polishedNote;
+      this.updatePlaceholderVisibility(this.openFormatContent);
     }
   }
   
@@ -649,7 +699,9 @@ class VoiceNotesApp {
       <div class="section-content" contenteditable="true" placeholder="Start writing..."></div>
     `;
 
-    (card.querySelector('.section-content') as HTMLDivElement)!.innerText = section.content;
+    const contentDiv = card.querySelector('.section-content') as HTMLDivElement;
+    contentDiv.innerText = section.content;
+    this.updatePlaceholderVisibility(contentDiv);
 
     return card;
   }
@@ -795,12 +847,18 @@ class VoiceNotesApp {
       }
       this.isRecording = false;
       this.updateRecordingUI(false);
-      this.stopLiveWaveform();
-      this.stopTimer();
-
+      
       if (this.activeView === 'lyriq') {
-          this.syncLyrics();
+        this.stopLyriqWaveformAnimation();
+        // The main animation loop will continue if the beat is still playing
+        if (this.lyriqAudioPlayer.paused) {
+            this.toggleLyriqPlayback();
+        }
+      } else {
+        this.stopLiveWaveform();
+        this.stopTimer();
       }
+
     } else {
       // Start logic
       if (navigator.permissions?.query) { // Optional chaining for safety
@@ -836,6 +894,16 @@ class VoiceNotesApp {
         };
     
         this.mediaRecorder.onstop = async () => {
+          // Clean up stream tracks
+          this.stream?.getTracks().forEach(track => track.stop());
+          this.stream = null;
+
+          if (this.activeView === 'lyriq') {
+            // In Lyriq view, we don't process/save the vocal recording yet
+            // It's just for live visualization
+            return;
+          }
+
           const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
           this.audioChunks = [];
           
@@ -874,8 +942,18 @@ class VoiceNotesApp {
         this.mediaRecorder.start();
         this.isRecording = true;
         this.updateRecordingUI(true);
-        this.startLiveWaveform();
-        this.startTimer();
+
+        if (this.activeView === 'lyriq') {
+            this.vocalWaveformCtx?.clearRect(0,0, this.vocalWaveformCanvas.width, this.vocalWaveformCanvas.height);
+            this.lyriqAudioPlayer.currentTime = 0;
+            if (this.lyriqAudioPlayer.paused) {
+                this.toggleLyriqPlayback();
+            }
+            this.startLyriqWaveformAnimation(); // This just sets up the analyser now
+        } else {
+            this.startLiveWaveform();
+            this.startTimer();
+        }
 
     } catch (error) {
         console.error("Error creating MediaRecorder:", error);
@@ -932,8 +1010,8 @@ class VoiceNotesApp {
       try {
           const response = await this.genAI.models.generateContent({
               model: MODEL_NAME,
-              contents: {
-                parts: [{ text: `
+              // FIX: Changed contents to be a single string to align with Gemini API guidelines for text-only prompts.
+              contents: `
                     You are an expert musical assistant. A songwriter has provided a raw transcription from a voice memo.
                     Your task is to analyze the transcription and structure it into a clear, organized format for songwriting.
                     
@@ -947,8 +1025,7 @@ class VoiceNotesApp {
                     
                     RAW TRANSCRIPTION:
                     "${note.rawTranscription}"
-                `}]
-              },
+                `,
               config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -1078,24 +1155,11 @@ class VoiceNotesApp {
   private startTimer(): void {
     this.recordingStartTime = Date.now();
     this.stopTimer(); // Clear any existing timer
-    
-    // If in Lyriq view, reset its timer for the new recording
-    if (this.activeView === 'lyriq') {
-        this.lyriqModalTime.textContent = '0:00';
-    }
 
     this.timerIntervalId = window.setInterval(() => {
       const elapsedTime = Date.now() - this.recordingStartTime;
-      
-      // Update main editor timer (with milliseconds)
       const formattedTimeMs = this.formatTime(elapsedTime, true);
       this.liveRecordingTimerDisplay.textContent = formattedTimeMs;
-      
-      // Also update Lyriq player timer if it's the active view (without milliseconds)
-      if (this.activeView === 'lyriq') {
-          const formattedTime = this.formatTime(elapsedTime, false);
-          this.lyriqModalTime.textContent = formattedTime;
-      }
     }, 20); // Update frequently for smooth ms display
   }
 
@@ -1213,7 +1277,7 @@ class VoiceNotesApp {
         .join('');
   }
 
-  private handleLyriqFileUpload(event: Event): void {
+  private async handleLyriqFileUpload(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files[0]) {
       const file = input.files[0];
@@ -1222,23 +1286,42 @@ class VoiceNotesApp {
       
       const trackButton = this.lyriqAddBeatBtn;
       const icon = trackButton.querySelector('i');
-      const text = trackButton.querySelector('span');
-
+      
       if(icon) icon.className = 'fas fa-check-circle';
-      if(text) text.textContent = file.name;
       trackButton.classList.add('active');
+
+      this.setLyriqModalState('visible');
+
+      // Process and draw waveform
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const audioContext = new AudioContext();
+        this.beatAudioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        // Resize canvas based on audio duration for scrolling effect
+        const canvasWidth = this.beatAudioBuffer.duration * this.PIXELS_PER_SECOND;
+        this.beatWaveformCanvas.width = canvasWidth;
+        this.vocalWaveformCanvas.width = canvasWidth;
+
+        this.renderBeatWaveform();
+      } catch (e) {
+        console.error("Error processing audio file:", e);
+      }
     }
   }
 
   private toggleLyriqPlayback(): void {
-    if (!this.lyriqAudioPlayer.src) return;
+    if (!this.lyriqAudioPlayer.src || (this.isRecording && !this.lyriqIsPlaying)) return;
+
     const icon = this.lyriqModalPlayBtn.querySelector('i');
     if (this.lyriqIsPlaying) {
         this.lyriqAudioPlayer.pause();
         if(icon) icon.className = 'fas fa-play';
+        this.stopLyriqAnimation();
     } else {
         this.lyriqAudioPlayer.play();
         if(icon) icon.className = 'fas fa-pause';
+        this.startLyriqAnimation();
     }
     this.lyriqIsPlaying = !this.lyriqIsPlaying;
   }
@@ -1251,15 +1334,6 @@ class VoiceNotesApp {
     if (!this.lyriqAudioPlayer.duration) return;
 
     const currentTime = this.lyriqAudioPlayer.currentTime;
-    
-    // Update timer and progress, but NOT if a recording is in progress.
-    // The recording timer will handle the UI update in that case.
-    if (!this.isRecording) {
-        this.lyriqModalTime.textContent = this.formatTime(currentTime * 1000);
-    }
-
-    const progressPercent = (currentTime / this.lyriqAudioPlayer.duration) * 100;
-    this.lyriqProgressLine.style.height = `${progressPercent}%`;
 
     // Find the current lyric line
     let currentLine = -1;
@@ -1286,9 +1360,50 @@ class VoiceNotesApp {
 
   private handleLyriqEnded(): void {
     this.lyriqIsPlaying = false;
+    this.isRecording = false;
+    this.updateRecordingUI(false);
+    this.stopLyriqWaveformAnimation();
+    this.stopLyriqAnimation();
     const icon = this.lyriqModalPlayBtn.querySelector('i');
     if (icon) icon.className = 'fas fa-play';
     this.lyriqAudioPlayer.currentTime = 0;
+  }
+  
+  private toggleLyriqMute(): void {
+    const isMuted = this.lyriqAudioPlayer.volume === 0;
+    if (isMuted) {
+        // Unmute to the last known volume.
+        this.lyriqAudioPlayer.volume = this.lastVolume;
+    } else {
+        // Mute: store current volume and set to 0.
+        this.lastVolume = this.lyriqAudioPlayer.volume;
+        this.lyriqAudioPlayer.volume = 0;
+    }
+    this.updateVolumeUI();
+  }
+
+  private handleVolumeChange(): void {
+      const newVolume = parseFloat(this.lyriqVolumeSlider.value);
+      this.lyriqAudioPlayer.volume = newVolume;
+      if (newVolume > 0) {
+          this.lastVolume = newVolume;
+      }
+      this.updateVolumeUI();
+  }
+
+  private updateVolumeUI(): void {
+      if (!this.lyriqVolumeSlider) return; // Guard for initial call
+      const volume = this.lyriqAudioPlayer.volume;
+      this.lyriqVolumeSlider.value = volume.toString();
+      
+      const icon = this.lyriqVolumeBtn.querySelector('i')!;
+      if (volume === 0) {
+          icon.className = 'fas fa-volume-mute';
+      } else if (volume <= 0.5) {
+          icon.className = 'fas fa-volume-down';
+      } else {
+          icon.className = 'fas fa-volume-up';
+      }
   }
 
   // --- Context Menu ---
@@ -1370,6 +1485,190 @@ class VoiceNotesApp {
       }
   }
 
+  // --- Lyriq Modal & Waveform ---
+
+  private setLyriqModalState(state: 'visible' | 'peeking' | 'hidden'): void {
+    this.lyriqControlsModal.classList.remove('visible', 'peeking');
+    this.lyriqControlsModal.style.transform = ''; // Reset any inline styles from dragging
+    if (state === 'visible' || state === 'peeking') {
+        this.lyriqControlsModal.classList.add(state);
+
+        if (state === 'visible' && this.beatAudioBuffer) {
+            // Recalculate canvas size if it becomes fully visible
+            setTimeout(() => this.renderBeatWaveform(), 50); // allow transition to start
+        }
+    }
+  }
+
+  private getPointerY(e: MouseEvent | TouchEvent): number {
+    return e.type.startsWith('touch') ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+  }
+
+  private handleModalDragStart(e: MouseEvent | TouchEvent): void {
+      if (e instanceof MouseEvent && e.button !== 0) return; // Only drag with left mouse button
+
+      const isVisible = this.lyriqControlsModal.classList.contains('visible');
+      const isPeeking = this.lyriqControlsModal.classList.contains('peeking');
+      const targetOnHandle = (e.target as HTMLElement).closest('.lyriq-modal-handle-container');
+
+      // Allow dragging from the handle when visible, or anywhere on the modal when peeking.
+      if ((isVisible && targetOnHandle) || isPeeking) {
+          this.isDraggingModal = true;
+          this.modalDragStartY = this.getPointerY(e);
+          const style = window.getComputedStyle(this.lyriqControlsModal);
+          const matrix = new DOMMatrix(style.transform);
+          this.modalDragStartTranslateY = matrix.m42;
+          this.lyriqControlsModal.style.transition = 'none';
+      }
+  }
+
+  private handleModalDragMove(e: MouseEvent | TouchEvent): void {
+      if (!this.isDraggingModal) return;
+      e.preventDefault();
+      const currentY = this.getPointerY(e);
+      const deltaY = currentY - this.modalDragStartY;
+      let newTranslateY = this.modalDragStartTranslateY + deltaY;
+      if (newTranslateY < 0) newTranslateY = 0; // Prevent dragging above the top
+      this.lyriqControlsModal.style.transform = `translateY(${newTranslateY}px)`;
+  }
+
+  private handleModalDragEnd(e: MouseEvent | TouchEvent): void {
+      if (!this.isDraggingModal) return;
+      this.isDraggingModal = false;
+
+      const wasPeeking = this.modalDragStartTranslateY > 0;
+      const style = window.getComputedStyle(this.lyriqControlsModal);
+      const matrix = new DOMMatrix(style.transform);
+      const currentTranslateY = matrix.m42;
+      const deltaY = currentTranslateY - this.modalDragStartTranslateY;
+
+      // A small delta shouldn't change state (it's a tap, not a drag)
+      if (Math.abs(deltaY) < 10) {
+          if (wasPeeking) this.setLyriqModalState('visible'); // Tap on peeking modal makes it visible
+          else this.setLyriqModalState('visible'); // On desktop, a simple click might register as a small drag
+          return;
+      }
+
+      if (wasPeeking) {
+          // If dragging up (negative delta), become visible
+          if (deltaY < -50) { // Dragged up more than 50px
+              this.setLyriqModalState('visible');
+          } else {
+              this.setLyriqModalState('peeking');
+          }
+      } else { // Was visible
+          // If dragging down (positive delta), become peeking
+          if (deltaY > 50) { // Dragged down more than 50px
+              this.setLyriqModalState('peeking');
+          } else {
+              this.setLyriqModalState('visible');
+          }
+      }
+  }
+
+  private renderBeatWaveform(): void {
+    if (!this.beatAudioBuffer || !this.beatWaveformCtx) return;
+    const canvas = this.beatWaveformCtx.canvas;
+    
+    // Don't resize canvas width here, it's set on file load.
+    // Only resize height based on its container.
+    const { height } = canvas.getBoundingClientRect();
+    if (canvas.height !== height) {
+        canvas.height = height;
+    }
+    
+    const data = this.beatAudioBuffer.getChannelData(0);
+    const step = Math.ceil(data.length / canvas.width);
+    const amp = canvas.height / 2;
+    this.beatWaveformCtx.clearRect(0, 0, canvas.width, canvas.height);
+    this.beatWaveformCtx.strokeStyle = '#A880F7';
+    this.beatWaveformCtx.lineWidth = 1;
+    this.beatWaveformCtx.beginPath();
+    for (let i = 0; i < canvas.width; i++) {
+        let min = 1.0;
+        let max = -1.0;
+        for (let j = 0; j < step; j++) {
+            const datum = data[(i * step) + j];
+            if (datum < min) min = datum;
+            if (datum > max) max = datum;
+        }
+        this.beatWaveformCtx.moveTo(i, (1 + min) * amp);
+        this.beatWaveformCtx.lineTo(i, (1 + max) * amp);
+    }
+    this.beatWaveformCtx.stroke();
+  }
+
+  private startLyriqAnimation(): void {
+      if (this.lyriqAnimationId) {
+          cancelAnimationFrame(this.lyriqAnimationId);
+      }
+
+      const animate = () => {
+          if (!this.lyriqIsPlaying && !this.isRecording) {
+              this.stopLyriqAnimation();
+              return;
+          }
+
+          const currentTime = this.lyriqAudioPlayer.currentTime;
+          const currentPixelOffset = currentTime * this.PIXELS_PER_SECOND;
+          const viewWidth = this.lyriqWaveforms.getBoundingClientRect().width;
+          const translateX = (viewWidth / 2) - currentPixelOffset;
+
+          this.beatWaveformCanvas.style.transform = `translateX(${translateX}px)`;
+          this.vocalWaveformCanvas.style.transform = `translateX(${translateX}px)`;
+          
+          this.lyriqModalTime.textContent = this.formatTime(currentTime * 1000).split('.')[0];
+
+          if (this.isRecording && this.analyserNode && this.waveformDataArray && this.vocalWaveformCtx) {
+              const xPos = currentPixelOffset;
+              this.analyserNode.getByteTimeDomainData(this.waveformDataArray);
+              let sum = 0;
+              for(let i = 0; i < this.waveformDataArray.length; i++) {
+                  sum += Math.abs(this.waveformDataArray[i] - 128);
+              }
+              const avg = sum / this.waveformDataArray.length;
+              const canvas = this.vocalWaveformCtx.canvas;
+              const { height } = canvas.getBoundingClientRect();
+              if (canvas.height !== height) canvas.height = height;
+
+              const amplitude = Math.max(2, (avg / 64) * canvas.height);
+              this.vocalWaveformCtx.fillStyle = '#ff453a';
+              const y = canvas.height / 2;
+              this.vocalWaveformCtx.fillRect(xPos, y - amplitude / 2, 2, amplitude);
+          }
+
+          this.lyriqAnimationId = requestAnimationFrame(animate);
+      };
+
+      this.lyriqAnimationId = requestAnimationFrame(animate);
+  }
+
+  private stopLyriqAnimation(): void {
+      if (this.lyriqAnimationId) {
+          cancelAnimationFrame(this.lyriqAnimationId);
+          this.lyriqAnimationId = null;
+      }
+  }
+
+  private startLyriqWaveformAnimation(): void {
+    if (!this.stream) return;
+    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const source = this.audioContext.createMediaStreamSource(this.stream);
+    this.analyserNode = this.audioContext.createAnalyser();
+    this.analyserNode.fftSize = 256;
+    source.connect(this.analyserNode);
+    this.waveformDataArray = new Uint8Array(this.analyserNode.frequencyBinCount);
+  }
+
+  private stopLyriqWaveformAnimation(): void {
+    if (this.audioContext) {
+        this.audioContext.close().catch(e => console.error(e));
+        this.audioContext = null;
+        this.analyserNode = null;
+        this.waveformDataArray = null;
+    }
+  }
+
 
   // --- Utility functions ---
   private getAudioDuration(url: string): Promise<number> {
@@ -1435,6 +1734,16 @@ class VoiceNotesApp {
             this.recordingStatus.textContent = 'Ready to record';
         }
     }, 4000);
+  }
+
+  private handleOutsideClick(e: MouseEvent): void {
+    if (this.isMobile && !this.appContainer.classList.contains('sidebar-collapsed')) {
+        const target = e.target as HTMLElement;
+        // If the click is not on the sidebar or the toggle button that opens it, then close it.
+        if (!this.sidebar.contains(target) && !this.sidebarToggleButton.contains(target)) {
+            this.appContainer.classList.add('sidebar-collapsed');
+        }
+    }
   }
 }
 

@@ -199,33 +199,39 @@
               <!-- Lyrics populated here -->
           </div>
           
-          <div class="lyriq-controls-modal">
-              <div class="lyriq-modal-handle"></div>
+          <div class="lyriq-controls-modal" id="lyriqControlsModal">
+              <div class="lyriq-modal-handle-container" id="lyriqModalHandle">
+                <div class="lyriq-modal-handle"></div>
+              </div>
               
-              <div class="lyriq-modal-upper-content">
-                  <div class="lyriq-track-info">
-                      <button class="lyriq-track-btn" id="lyriqAddBeatBtn">
-                          <i class="fas fa-music"></i>
-                          <span>Add beat</span>
-                      </button>
-                      <button class="lyriq-track-btn" id="lyriqVocalIndicator">
-                          <i class="fas fa-microphone"></i>
-                          <span>Vocal</span>
-                      </button>
-                  </div>
-                  
-                  <div class="lyriq-progress-vertical">
-                      <span id="lyriqModalTime">0:00</span>
-                      <div class="lyriq-progress-vertical-track">
-                          <div id="lyriqProgressLine" class="lyriq-progress-vertical-line"></div>
-                      </div>
-                  </div>
+              <div class="lyriq-modal-header">
+                <span id="lyriqModalTime">0:00</span>
+                <button id="lyriqCloseBtn" class="lyriq-modal-close-btn" title="Close"><i class="fas fa-times"></i></button>
+              </div>
+
+              <div class="lyriq-waveform-container">
+                <div class="lyriq-track-labels">
+                    <button class="lyriq-track-btn" id="lyriqAddBeatBtn">
+                        <i class="fas fa-music"></i>
+                    </button>
+                    <button class="lyriq-track-btn" id="lyriqVocalIndicator">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                </div>
+                <div class="lyriq-waveforms">
+                    <div id="lyriqPlayhead" class="lyriq-playhead"></div>
+                    <canvas id="beatWaveformCanvas"></canvas>
+                    <canvas id="vocalWaveformCanvas"></canvas>
+                </div>
               </div>
       
               <div class="lyriq-playback-controls">
-                  <button id="lyriqVolumeBtn" class="lyriq-control-btn-round" title="Mute/Unmute">
-                      <i class="fas fa-volume-up"></i>
-                  </button>
+                  <div class="lyriq-volume-control">
+                    <button id="lyriqVolumeBtn" class="lyriq-control-btn-round" title="Mute/Unmute">
+                        <i class="fas fa-volume-up"></i>
+                    </button>
+                    <input type="range" id="lyriqVolumeSlider" class="volume-slider" min="0" max="1" step="0.01" value="1">
+                  </div>
                   <button id="lyriqModalRecordBtn" class="lyriq-record-btn-main" title="Record">
                       <div class="record-dot"></div>
                   </button>
