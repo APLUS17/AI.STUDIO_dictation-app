@@ -268,6 +268,7 @@ class VoiceNotesApp {
 
     // Initial setup
     this.bindEventListeners();
+    this.setAppHeight();
     this.initTheme();
     this.loadDataFromStorage();
     this.updateVolumeUI();
@@ -398,7 +399,10 @@ class VoiceNotesApp {
 
 
     // Window and global listeners
-    window.addEventListener('resize', () => { this.isMobile = window.innerWidth <= 1024; });
+    window.addEventListener('resize', () => { 
+        this.isMobile = window.innerWidth <= 1024;
+        this.setAppHeight();
+    });
     window.addEventListener('keydown', (e) => this.handleKeyDown(e));
     document.addEventListener('click', (e) => {
       this.hideContextMenu();
@@ -926,14 +930,14 @@ class VoiceNotesApp {
   private async toggleRecording(): Promise<void> {
     if (this.isRecording) {
       // Stop logic
-      if (this.mediaRecorder) {
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
         this.mediaRecorder.stop();
       }
       this.isRecording = false;
       this.updateRecordingUI(false);
       
       if (this.activeView === 'lyriq') {
-        // this.stopLyriqWaveformAnimation(); // Removed to fix crash
+        // No specific stop action needed here anymore, onstop handles it
       } else {
         this.stopLiveWaveform();
         this.stopTimer();
@@ -968,7 +972,18 @@ class VoiceNotesApp {
     
     this.audioChunks = [];
     try {
-        this.mediaRecorder = new MediaRecorder(this.stream);
+        const options = { mimeType: 'audio/webm; codecs=opus' };
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            console.warn(`${options.mimeType} is not supported.`);
+            options.mimeType = 'audio/webm';
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                console.warn(`${options.mimeType} is not supported.`);
+                // @ts-ignore
+                options.mimeType = ''; // Let browser decide, may not be ideal.
+            }
+        }
+
+        this.mediaRecorder = new MediaRecorder(this.stream, options);
         this.mediaRecorder.ondataavailable = (event) => {
           this.audioChunks.push(event.data);
         };
@@ -978,7 +993,7 @@ class VoiceNotesApp {
           this.stream?.getTracks().forEach(track => track.stop());
           this.stream = null;
           
-          const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+          const audioBlob = new Blob(this.audioChunks, { type: this.mediaRecorder!.mimeType });
           this.audioChunks = [];
 
           if (audioBlob.size < 1000) { // Guard against empty recordings
@@ -1097,7 +1112,6 @@ class VoiceNotesApp {
       try {
           const response = await this.genAI.models.generateContent({
               model: MODEL_NAME,
-              // FIX: Changed contents to be a single string to align with Gemini API guidelines for text-only prompts.
               contents: `
                     You are an expert musical assistant. A songwriter has provided a raw transcription from a voice memo.
                     Your task is to analyze the transcription and structure it into a clear, organized format for songwriting.
@@ -1130,7 +1144,22 @@ class VoiceNotesApp {
           });
 
           const jsonString = response.text;
-          const structuredResult = JSON.parse(jsonString);
+          let structuredResult;
+
+          try {
+              structuredResult = JSON.parse(jsonString);
+          } catch (e) {
+              console.error("Failed to parse AI JSON response:", e);
+              console.error("Received text:", jsonString);
+              // Fallback: treat the whole response as content in one section
+              this.setFinalStatus('Could not parse polished note.', true);
+              note.polishedNote = jsonString; // Use the raw text response
+              note.sections = [{ type: 'Verse', content: jsonString }];
+              this.saveDataToStorage();
+              this.saveNoteState();
+              this.setActiveNote(note.id);
+              return;
+          }
           
           this.updateCurrentNoteContent();
           this.saveNoteState(); // Save state before AI polish
@@ -1412,6 +1441,10 @@ class VoiceNotesApp {
           if(icon) icon.className = 'fas fa-play';
           this.stopLyriqAnimation();
       } else {
+          // Sync vocal track to beat track before playing
+          if (this.lyriqVocalAudioPlayer.src) {
+              this.lyriqVocalAudioPlayer.currentTime = this.lyriqAudioPlayer.currentTime;
+          }
           this.lyriqAudioPlayer.play();
           if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.play();
           if(icon) icon.className = 'fas fa-pause';
@@ -1941,6 +1974,10 @@ class VoiceNotesApp {
         e.preventDefault();
         this.redo();
     }
+  }
+
+  private setAppHeight(): void {
+    document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
   }
 
 
