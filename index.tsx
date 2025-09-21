@@ -368,7 +368,6 @@ class VoiceNotesApp {
     });
     this.lyriqSidebarToggleButton.addEventListener('click', () => this.toggleSidebar());
     this.audioUploadInput.addEventListener('change', (e) => this.handleLyriqFileUpload(e as Event));
-    this.lyriqAddBeatBtn.addEventListener('click', () => this.audioUploadInput.click());
     this.lyriqUploadBtnHeader.addEventListener('click', () => this.audioUploadInput.click());
     this.lyriqModalPlayBtn.addEventListener('click', () => this.toggleLyriqPlayback());
     this.lyriqModalRecordBtn.addEventListener('click', () => this.toggleRecording());
@@ -380,7 +379,7 @@ class VoiceNotesApp {
     this.lyriqAudioPlayer.addEventListener('ended', () => this.handleLyriqEnded());
     
     // Lyriq Mixer Controls
-    this.lyriqAddBeatBtn.addEventListener('click', () => this.setActiveMixerTrack('beat'));
+    this.lyriqAddBeatBtn.addEventListener('click', () => this.handleBeatButtonClick());
     this.lyriqVocalIndicator.addEventListener('click', () => this.setActiveMixerTrack('vocal'));
 
     // Lyriq Modal Drag Controls
@@ -1361,6 +1360,14 @@ class VoiceNotesApp {
 
 
   // --- Lyriq Player ---
+  private handleBeatButtonClick(): void {
+    this.setActiveMixerTrack('beat');
+    // Only trigger file upload if no beat is currently loaded.
+    if (!this.lyriqAudioPlayer.src || this.lyriqAudioPlayer.src === '') {
+        this.audioUploadInput.click();
+    }
+  }
+
   private loadNoteIntoLyriqPlayer(): void {
       if (!this.currentNoteId) {
           // If no note is active, find the most recent one
