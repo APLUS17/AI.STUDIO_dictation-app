@@ -134,6 +134,7 @@ class VoiceNotesApp {
   // Lyriq Player elements and state
   private lyriqPlayerView: HTMLDivElement;
   private lyriqPlayerButton: HTMLAnchorElement;
+  private lyriqSidebarToggleButton: HTMLButtonElement;
   private audioUploadInput: HTMLInputElement;
   private lyriqAudioPlayer: HTMLAudioElement;
   private lyriqVocalAudioPlayer: HTMLAudioElement;
@@ -150,7 +151,6 @@ class VoiceNotesApp {
   private lyriqUploadBtnHeader: HTMLButtonElement;
   private lyriqControlsModal: HTMLDivElement;
   private lyriqModalHandle: HTMLDivElement;
-  private lyriqCloseBtn: HTMLButtonElement;
   private lyriqWaveforms: HTMLDivElement;
   private beatWaveformCanvas: HTMLCanvasElement;
   private vocalWaveformCanvas: HTMLCanvasElement;
@@ -163,6 +163,7 @@ class VoiceNotesApp {
   private isDraggingModal = false;
   private modalDragStartY = 0;
   private modalDragStartTranslateY = 0;
+  private modalDragTarget: EventTarget | null = null;
   private isScrubbing = false;
 
   private lyriqIsPlaying = false;
@@ -242,6 +243,7 @@ class VoiceNotesApp {
     // Lyriq Player elements
     this.lyriqPlayerView = document.querySelector('.lyriq-player-view') as HTMLDivElement;
     this.lyriqPlayerButton = document.getElementById('lyriqPlayerButton') as HTMLAnchorElement;
+    this.lyriqSidebarToggleButton = document.getElementById('lyriqSidebarToggleButton') as HTMLButtonElement;
     this.audioUploadInput = document.getElementById('audioUpload') as HTMLInputElement;
     this.lyriqAudioPlayer = document.getElementById('lyriqAudio') as HTMLAudioElement;
     this.lyriqVocalAudioPlayer = document.getElementById('lyriqVocalAudio') as HTMLAudioElement;
@@ -258,7 +260,6 @@ class VoiceNotesApp {
     this.lyriqUploadBtnHeader = document.getElementById('lyriqUploadBtnHeader') as HTMLButtonElement;
     this.lyriqControlsModal = document.getElementById('lyriqControlsModal') as HTMLDivElement;
     this.lyriqModalHandle = document.getElementById('lyriqModalHandle') as HTMLDivElement;
-    this.lyriqCloseBtn = document.getElementById('lyriqCloseBtn') as HTMLButtonElement;
     this.lyriqWaveforms = this.lyriqControlsModal.querySelector('.lyriq-waveforms') as HTMLDivElement;
     this.beatWaveformCanvas = document.getElementById('beatWaveformCanvas') as HTMLCanvasElement;
     this.vocalWaveformCanvas = document.getElementById('vocalWaveformCanvas') as HTMLCanvasElement;
@@ -365,6 +366,7 @@ class VoiceNotesApp {
         e.preventDefault();
         this.setActiveView('lyriq');
     });
+    this.lyriqSidebarToggleButton.addEventListener('click', () => this.toggleSidebar());
     this.audioUploadInput.addEventListener('change', (e) => this.handleLyriqFileUpload(e as Event));
     this.lyriqAddBeatBtn.addEventListener('click', () => this.audioUploadInput.click());
     this.lyriqUploadBtnHeader.addEventListener('click', () => this.audioUploadInput.click());
@@ -1663,6 +1665,7 @@ class VoiceNotesApp {
       // Allow dragging from the handle when visible, or anywhere on the modal when peeking.
       if ((isVisible && targetOnHandle) || isPeeking) {
           this.isDraggingModal = true;
+          this.modalDragTarget = e.target;
           this.modalDragStartY = this.getPointerY(e);
           const style = window.getComputedStyle(this.lyriqControlsModal);
           const matrix = new DOMMatrix(style.transform);
@@ -1690,29 +1693,40 @@ class VoiceNotesApp {
       const matrix = new DOMMatrix(style.transform);
       const currentTranslateY = matrix.m42;
       const deltaY = currentTranslateY - this.modalDragStartTranslateY;
+      const targetOnHandle = (this.modalDragTarget as HTMLElement)?.closest('.lyriq-modal-handle-container');
 
-      // A small delta shouldn't change state (it's a tap, not a drag)
+      // A small delta is treated as a tap
       if (Math.abs(deltaY) < 10) {
-          if (wasPeeking) this.setLyriqModalState('visible'); // Tap on peeking modal makes it visible
-          else this.setLyriqModalState('visible'); // On desktop, a simple click might register as a small drag
+          if (targetOnHandle) {
+              // Tapping the handle toggles between peeking and visible
+              this.setLyriqModalState(wasPeeking ? 'visible' : 'peeking');
+          } else if (wasPeeking) {
+              // Tapping the content area when peeking expands it
+              this.setLyriqModalState('visible');
+          } else {
+              // Tapping elsewhere when visible does nothing, snaps back
+              this.setLyriqModalState('visible');
+          }
+          this.modalDragTarget = null;
           return;
       }
 
       if (wasPeeking) {
-          // If dragging up (negative delta), become visible
-          if (deltaY < -50) { // Dragged up more than 50px
+          if (deltaY < -50) { // Dragged up
               this.setLyriqModalState('visible');
+          } else if (deltaY > 50) { // Dragged down from peeking to hide
+              this.setLyriqModalState('hidden');
           } else {
-              this.setLyriqModalState('peeking');
+              this.setLyriqModalState('peeking'); // Snap back
           }
       } else { // Was visible
-          // If dragging down (positive delta), become peeking
-          if (deltaY > 50) { // Dragged down more than 50px
+          if (deltaY > 50) { // Dragged down
               this.setLyriqModalState('peeking');
           } else {
-              this.setLyriqModalState('visible');
+              this.setLyriqModalState('visible'); // Snap back
           }
       }
+      this.modalDragTarget = null;
   }
 
   private handleScrubStart(e: MouseEvent | TouchEvent): void {

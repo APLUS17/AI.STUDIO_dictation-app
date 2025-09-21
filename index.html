@@ -189,6 +189,9 @@
       
       <div class="lyriq-player-view">
           <div class="lyriq-header">
+              <button class="sidebar-toggle-button" id="lyriqSidebarToggleButton" title="Toggle Sidebar">
+                <i class="fas fa-bars"></i>
+              </button>
               <div class="lyriq-header-actions">
                   <button class="lyriq-action-btn" id="lyriqUploadBtnHeader" title="Upload Beat">
                       <i class="fas fa-arrow-up-from-bracket"></i>
@@ -215,7 +218,6 @@
               
               <div class="lyriq-modal-header">
                 <span id="lyriqModalTime">0:00</span>
-                <button id="lyriqCloseBtn" class="lyriq-modal-close-btn" title="Close"><i class="fas fa-times"></i></button>
               </div>
 
               <div class="lyriq-waveform-container">
@@ -241,12 +243,14 @@
                     </button>
                     <input type="range" id="lyriqVolumeSlider" class="volume-slider" min="0" max="1" step="0.01" value="1">
                   </div>
-                  <button id="lyriqModalRecordBtn" class="lyriq-record-btn-main" title="Record">
-                      <div class="record-dot"></div>
-                  </button>
-                  <button id="lyriqModalPlayBtn" class="lyriq-control-btn-round" title="Play/Pause">
-                      <i class="fas fa-play"></i>
-                  </button>
+                  <div class="lyriq-main-controls">
+                    <button id="lyriqModalRecordBtn" title="Record">
+                        <div class="record-dot"></div>
+                    </button>
+                    <button id="lyriqModalPlayBtn" class="lyriq-control-btn-round" title="Play/Pause">
+                        <i class="fas fa-play"></i>
+                    </button>
+                  </div>
               </div>
           </div>
           <audio id="lyriqAudio"></audio>

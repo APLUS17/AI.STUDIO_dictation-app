@@ -146,10 +146,11 @@ body.light-mode {
 [contenteditable] {
   caret-color: var(--color-cursor);
 }
-[contenteditable][placeholder].placeholder-active {
+[contenteditable][placeholder].placeholder-active::before {
+  content: attr(placeholder);
   color: var(--color-text-tertiary);
-  -webkit-text-fill-color: var(--color-text-tertiary); /* For Safari */
-  opacity: 1;
+  pointer-events: none;
+  display: block;
 }
 
 html {
@@ -543,6 +544,15 @@ body.light-mode .audio-playback-container {
 }
 
 /* --- Player States --- */
+#playbackPlayButton .play-text {
+    display: none;
+}
+#playbackPlayButton .play-icon {
+    display: inline-block;
+}
+#playbackPlayButton .pause-icon {
+    display: none;
+}
 
 /* Pre-Play State (like first image) */
 .audio-playback-container.state-pre-play .seek-btn,
@@ -558,6 +568,760 @@ body.light-mode .audio-playback-container {
   font-weight: 500;
   gap: 8px;
 }
+
+.audio-playback-container.state-pre-play .play-text {
+  display: inline;
+}
+
+#playbackPlayButton .pause-icon {
+  font-size: 24px;
+}
+
+/* Playing State */
+.audio-playback-container.state-playing #playbackTimeDisplay {
+  display: inline;
+}
+.audio-playback-container.state-playing #playbackPlayButton {
+  font-size: 40px;
+  width: 56px;
+  height: 56px;
+  background-color: #fff;
+  color: #000;
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 0;
+  gap: 0;
+}
+.audio-playback-container.state-playing .play-text {
+    display: none;
+}
+
+/* --- Song Structure Editor --- */
+#songStructureEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+#openFormatEditor { display: none; }
+
+.note-area.format-open #songStructureEditor,
+.note-area.format-open #addSectionBtn {
+  display: none;
+}
+.note-area.format-open #openFormatEditor {
+  display: block;
+  flex: 1;
+}
+#openFormatContent {
+  outline: none;
+  min-height: 200px;
+  width: 100%;
+}
+
+.song-section-card {
+  background-color: var(--color-surface);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  transition: all var(--transition-fast);
+}
+
+.section-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-type-dropdown {
+  position: relative;
+}
+
+.section-type-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background-color var(--transition-fast);
+}
+.section-type-btn:hover {
+  background-color: var(--color-surface-hover);
+}
+.section-type-btn .fa-chevron-down {
+  font-size: 12px;
+  transition: transform var(--transition-fast);
+}
+.section-type-dropdown.open .section-type-btn .fa-chevron-down {
+  transform: rotate(180deg);
+}
+
+.section-type-menu {
+  position: absolute;
+  top: 110%;
+  left: 0;
+  background-color: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  list-style: none;
+  padding: 8px;
+  margin: 0;
+  z-index: 10;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  min-width: 150px;
+}
+.section-type-dropdown.open .section-type-menu {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.section-type-menu li button {
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.section-type-menu li button:hover {
+  background-color: var(--color-surface-active);
+}
+
+.delete-section-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  transition: all var(--transition-fast);
+}
+.delete-section-btn:hover {
+  color: var(--color-recording);
+  background-color: var(--color-surface-hover);
+}
+
+.section-content {
+  font-size: 16px;
+  line-height: 1.7;
+  outline: none;
+  color: var(--color-text-secondary);
+  min-height: 50px;
+}
+
+.add-section-btn {
+  align-self: center;
+  margin-top: 24px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  padding: 10px 24px;
+  border-radius: 99px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+.add-section-btn:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+
+/* --- Recording Interface --- */
+.recording-interface {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: var(--footer-height);
+  background: var(--glass-recording-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid var(--glass-recording-border);
+  transition: height var(--transition-slow), background-color var(--transition-normal);
+  z-index: 100;
+}
+.live-recording-title, #liveWaveformCanvas, #liveRecordingTimerDisplay {
+  opacity: 0;
+  transition: opacity var(--transition-slow);
+  pointer-events: none;
+}
+
+body.is-recording .main-content {
+  padding-bottom: calc(var(--live-footer-height) - var(--footer-height));
+}
+body.is-recording .recording-interface {
+  height: var(--live-footer-height);
+  justify-content: flex-start;
+  padding-top: 24px;
+}
+body.is-recording .live-recording-title,
+body.is-recording #liveWaveformCanvas,
+body.is-recording #liveRecordingTimerDisplay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.live-recording-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+#liveWaveformCanvas {
+  width: 100%;
+  height: 100px;
+  margin-bottom: 24px;
+}
+#liveRecordingTimerDisplay {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  margin-bottom: 8px;
+}
+.status-indicator {
+  height: 20px;
+  margin-bottom: 12px;
+}
+.status-text {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  transition: color var(--transition-normal);
+}
+body.is-processing .status-text {
+  color: var(--color-accent);
+}
+
+.recording-controls {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.record-button {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: none;
+  background-color: var(--color-recording);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all var(--transition-normal);
+  box-shadow: var(--shadow-md);
+}
+.record-button .record-button-inner {
+  width: 56px;
+  height: 56px;
+  background-color: var(--color-recording);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  transition: all var(--transition-normal);
+  border: 2px solid rgba(0,0,0,0.1);
+}
+.record-button .fa-microphone, .record-button .fa-stop {
+  color: #fff;
+  font-size: 24px;
+}
+.record-button .fa-stop {
+  display: none;
+}
+
+.record-button.recording .record-button-inner {
+  border-radius: 12px;
+  transform: scale(0.9);
+}
+.record-button.recording .fa-microphone { display: none; }
+.record-button.recording .fa-stop { display: block; }
+
+
+.record-text {
+  position: absolute;
+  bottom: -24px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  pointer-events: none;
+}
+.record-waves {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 200px;
+  height: 200px;
+  transform: translate(-50%, -50%) scale(0.5);
+  top: 50%; left: 50%;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.record-button.recording .record-waves {
+  opacity: 1;
+}
+.wave {
+  fill: none;
+  stroke: var(--color-recording);
+  stroke-width: 2;
+  transform-origin: center;
+}
+.wave1 { animation: pulse 3s infinite cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+.wave2 { animation: pulse 3s infinite cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.5s; }
+.wave3 { animation: pulse 3s infinite cubic-bezier(0.25, 0.46, 0.45, 0.94) 1s; }
+
+@keyframes pulse {
+  0% { transform: scale(0.4); opacity: 1; }
+  100% { transform: scale(1.2); opacity: 0; }
+}
+
+/* --- Notes List View --- */
+.notes-list-view {
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  min-width: 0;
+  padding-bottom: 80px; /* Space for FAB */
+}
+.notes-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--color-border);
+}
+.notes-list-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.ideas-tabs {
+  display: flex;
+  padding: 8px 16px;
+  gap: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+.idea-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: none;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: var(--transition-tabs);
+}
+.idea-tab-btn i {
+  font-size: 16px;
+}
+.idea-tab-btn.active {
+  background-color: var(--color-accent);
+  color: #fff;
+}
+body.light-mode .idea-tab-btn.active {
+  color: #fff;
+}
+.idea-tab-btn:not(.active):hover {
+  background-color: var(--color-surface-hover);
+}
+
+.notes-list-content {
+  padding: 24px;
+}
+.notes-group-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 16px;
+}
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.note-card {
+  background-color: var(--note-card-bg);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid var(--color-border);
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.note-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-accent);
+}
+.note-card.deleting {
+  opacity: 0;
+  transform: scale(0.9);
+}
+.note-card-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--color-text);
+}
+.note-card-snippet {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.list-view-fab-container {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  z-index: 101;
+}
+.list-view-new-note-fab {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background-color: var(--color-accent);
+  color: white;
+  border: none;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.list-view-new-note-fab:hover {
+  transform: scale(1.05);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+}
+
+/* --- Lyriq Player --- */
+.lyriq-player-view {
+  flex-direction: column;
+  background-color: var(--color-bg-alt);
+  color: var(--color-text);
+  overflow: hidden;
+}
+.lyriq-header {
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 20;
+}
+.lyriq-header .sidebar-toggle-button {
+  display: flex;
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px);
+}
+.lyriq-header-actions { display: flex; gap: 8px; }
+.lyriq-action-btn {
+  width: 36px; height: 36px;
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px);
+  border-radius: 50%;
+  color: var(--color-text);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.lyriq-action-btn:hover { background-color: var(--color-surface-hover); }
+
+.lyriq-song-info {
+  text-align: center;
+  padding: 80px 24px 24px;
+}
+#lyriqSongTitle {
+  font-size: 28px;
+  font-weight: 700;
+}
+#lyriqSongSubtitle {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.lyriq-lyrics {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 24px 30vh; /* Space at bottom for modal */
+  scroll-padding-top: 40vh;
+  text-align: center;
+  min-height: 0;
+}
+.lyriq-line {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+  transition: color 0.4s ease, transform 0.4s ease;
+  margin-bottom: 16px;
+}
+.lyriq-line.active {
+  color: var(--color-text);
+  transform: scale(1.05);
+}
+.lyriq-line.placeholder {
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* Modal */
+.lyriq-controls-modal {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: var(--glass-bg);
+  border-top: 1px solid var(--glass-border);
+  backdrop-filter: blur(25px) saturate(180%);
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform var(--transition-slow);
+  z-index: 105;
+}
+.lyriq-controls-modal.peeking {
+  transform: translateY(calc(100% - var(--lyriq-modal-peeking-height)));
+}
+.lyriq-controls-modal.visible {
+  transform: translateY(0);
+  height: 45vh;
+  min-height: 350px;
+  max-height: 500px;
+}
+.lyriq-modal-handle-container {
+  padding: 8px 0;
+  cursor: grab;
+  width: 100%;
+}
+.lyriq-modal-handle {
+  width: 40px;
+  height: 5px;
+  background-color: var(--color-border);
+  border-radius: 99px;
+  margin: 0 auto;
+}
+.lyriq-modal-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 16px;
+  position: relative;
+}
+#lyriqModalTime {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.lyriq-waveform-container {
+  flex: 1;
+  display: flex;
+  padding: 16px 0;
+  min-height: 0;
+}
+.lyriq-track-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 0 16px;
+}
+.lyriq-track-btn {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.lyriq-track-btn i { font-size: 16px; }
+.lyriq-track-btn.active {
+  background-color: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+.lyriq-track-btn#lyriqVocalIndicator.has-recording.active {
+  background-color: var(--color-recording);
+  border-color: var(--color-recording);
+}
+.lyriq-track-btn#lyriqVocalIndicator.recording {
+  animation: pulse-border 1.5s infinite;
+}
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 69, 58, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0); }
+}
+
+.lyriq-waveforms {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: ew-resize;
+}
+.lyriq-playhead {
+  position: absolute;
+  left: 50%;
+  top: 0; bottom: 0;
+  width: 2px;
+  background-color: var(--color-recording);
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
+}
+#beatWaveformCanvas, #vocalWaveformCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 50%;
+  width: auto; /* JS will set width based on duration */
+}
+#vocalWaveformCanvas { top: 50%; }
+
+.lyriq-playback-controls {
+  display: flex;
+  align-items: center;
+  padding: 16px 24px 24px;
+  width: 100%;
+  position: relative;
+}
+.lyriq-main-controls {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+.lyriq-control-btn-round {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: var(--color-surface-active);
+  border: none;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 18px;
+  display: flex; align-items: center; justify-content: center;
+}
+#lyriqModalRecordBtn {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: none;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+#lyriqModalRecordBtn .record-dot {
+  width: 32px; height: 32px;
+  background-color: var(--color-recording);
+  border-radius: 50%;
+  transition: all var(--transition-fast);
+}
+#lyriqModalRecordBtn.recording .record-dot {
+  border-radius: 8px;
+}
+.lyriq-volume-control {
+  justify-self: start;
+  display: flex; align-items: center; gap: 8px;
+}
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100px;
+  height: 4px;
+  background: var(--color-surface);
+  border-radius: 99px;
+  outline: none;
+  opacity: 0.9;
+  transition: opacity .2s;
+}
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px;
+  background: var(--color-text);
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+/* --- Context Menu --- */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  display: none;
+  background-color: var(--glass-bg);
+  backdrop-filter: blur(15px);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+}
+.context-menu-list { list-style: none; }
+.context-menu-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px;
+  border: none; background: transparent;
+  color: var(--color-text);
+  width: 100%;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.context-menu-item:hover { background-color: var(--color-surface-active); }
+.context-menu-item.delete { color: var(--color-recording); }
+.context-menu-separator {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
+}
+
 
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
@@ -586,4 +1350,74 @@ body.light-mode ::-webkit-scrollbar-thumb {
 
 body.light-mode ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(0, 0, 0, 0.25);
+}
+
+/* --- Responsive Styles --- */
+@media (max-width: 1024px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 1000;
+    margin-left: 0;
+    transform: translateX(-100%);
+    transition: transform var(--transition-normal);
+  }
+  .app-container:not(.sidebar-collapsed) .sidebar {
+    transform: translateX(0);
+  }
+  .app-container.sidebar-collapsed .sidebar {
+    transform: translateX(-100%);
+  }
+  .main-header .sidebar-toggle-button {
+    display: flex;
+  }
+  .main-header {
+    padding: 12px 16px;
+  }
+  .note-content-wrapper {
+    padding: 16px;
+  }
+  .editor-title { font-size: 20px; }
+  .header-right-cluster .action-button { display: none; } /* Hide some on mobile */
+  .header-right-cluster #themeToggleButton, .header-right-cluster #newButton, .header-right-cluster #formatToggleButton { display: flex; } /* Keep these */
+  
+  .lyriq-controls-modal.visible {
+    height: 50vh;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-header {
+    padding: 8px;
+  }
+  .header-left-cluster {
+    min-width: 0;
+  }
+  .editor-title {
+    flex-grow: 1;
+    text-align: left;
+  }
+  .header-right-cluster {
+    flex-shrink: 0;
+  }
+  .notes-grid {
+    grid-template-columns: 1fr;
+  }
+  .lyriq-lyrics { padding-bottom: calc(var(--lyriq-modal-peeking-height) + 24px); }
+  .lyriq-controls-modal.visible {
+      min-height: 320px;
+  }
+  .lyriq-playback-controls {
+    position: static;
+    justify-content: space-between;
+  }
+  .lyriq-main-controls {
+    position: static;
+    transform: none;
+  }
+  .lyriq-control-btn-round { width: 38px; height: 38px; font-size: 16px; }
+  #lyriqModalRecordBtn { width: 56px; height: 56px; }
+  #lyriqModalRecordBtn .record-dot { width: 28px; height: 28px; }
 }
