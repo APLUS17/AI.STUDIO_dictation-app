@@ -946,6 +946,10 @@ class VoiceNotesApp {
 
     } else {
       // Start logic
+      if (this.activeView === 'lyriq') {
+        this.setActiveMixerTrack('vocal');
+      }
+
       if (navigator.permissions?.query) { // Optional chaining for safety
         try {
             const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
@@ -1049,7 +1053,7 @@ class VoiceNotesApp {
 
         if (this.activeView === 'lyriq') {
             this.vocalWaveformCtx?.clearRect(0,0, this.vocalWaveformCanvas.width, this.vocalWaveformCanvas.height);
-            this.updatePlayheadPosition(0);
+            // Do NOT reset playhead, allow for punch-in recording
             if (this.lyriqAudioPlayer.paused) {
                 this.toggleLyriqPlayback();
             }
@@ -1162,10 +1166,20 @@ class VoiceNotesApp {
               return;
           }
           
+          // Check if the note is essentially empty before replacing content
+          const isNoteEmpty = note.sections.length === 0 || 
+                              (note.sections.length === 1 && note.sections[0].content.trim() === '');
+
           this.updateCurrentNoteContent();
           this.saveNoteState(); // Save state before AI polish
 
-          note.sections = structuredResult;
+          if (isNoteEmpty) {
+              note.sections = structuredResult;
+          } else {
+              // Append new sections to existing content
+              note.sections.push(...structuredResult);
+          }
+          
           note.polishedNote = this.flattenSections(note.sections);
           note.timestamp = Date.now();
           
@@ -1420,7 +1434,7 @@ class VoiceNotesApp {
       if(icon) icon.className = 'fas fa-check-circle';
       trackButton.classList.add('active');
 
-      this.setLyriqModalState('visible');
+      this.setLyriqModalState('peeking');
 
       // Process and draw waveform
       try {
@@ -1667,213 +1681,166 @@ class VoiceNotesApp {
 
       const isVisible = this.lyriqControlsModal.classList.contains('visible');
       const isPeeking = this.lyriqControlsModal.classList.contains('peeking');
-      const targetOnHandle = (e.target as HTMLElement).closest('.lyriq-modal-handle-container');
+      const targetOnHandle = (e.target as HTMLElement).closest('#lyriqModalHandle');
 
       // Allow dragging from the handle when visible, or anywhere on the modal when peeking.
-      if ((isVisible && targetOnHandle) || isPeeking) {
+      if ((isVisible && targetOnHandle) || (isPeeking && !targetOnHandle)) {
           this.isDraggingModal = true;
           this.modalDragTarget = e.target;
           this.modalDragStartY = this.getPointerY(e);
-          const style = window.getComputedStyle(this.lyriqControlsModal);
-          const matrix = new DOMMatrix(style.transform);
-          this.modalDragStartTranslateY = matrix.m42;
-          this.lyriqControlsModal.style.transition = 'none';
+          this.lyriqControlsModal.classList.add('is-dragging');
+          
+          const transform = window.getComputedStyle(this.lyriqControlsModal).transform;
+          this.modalDragStartTranslateY = transform === 'none' ? 0 : new DOMMatrix(transform).m42;
       }
   }
 
   private handleModalDragMove(e: MouseEvent | TouchEvent): void {
       if (!this.isDraggingModal) return;
-      e.preventDefault();
+      e.preventDefault(); // Prevent page scroll on touch
+
       const currentY = this.getPointerY(e);
-      const deltaY = currentY - this.modalDragStartY;
-      let newTranslateY = this.modalDragStartTranslateY + deltaY;
-      if (newTranslateY < 0) newTranslateY = 0; // Prevent dragging above the top
+      let deltaY = currentY - this.modalDragStartY;
+
+      // Prevent dragging the modal higher than its 'visible' state (0 translation)
+      const newTranslateY = Math.max(0, this.modalDragStartTranslateY + deltaY);
+      
       this.lyriqControlsModal.style.transform = `translateY(${newTranslateY}px)`;
   }
 
   private handleModalDragEnd(e: MouseEvent | TouchEvent): void {
       if (!this.isDraggingModal) return;
       this.isDraggingModal = false;
+      this.lyriqControlsModal.classList.remove('is-dragging');
+      this.lyriqControlsModal.style.transform = ''; // Remove inline style to allow CSS transitions
 
-      const wasPeeking = this.modalDragStartTranslateY > 0;
-      const style = window.getComputedStyle(this.lyriqControlsModal);
-      const matrix = new DOMMatrix(style.transform);
-      const currentTranslateY = matrix.m42;
-      const deltaY = currentTranslateY - this.modalDragStartTranslateY;
-      const targetOnHandle = (this.modalDragTarget as HTMLElement)?.closest('.lyriq-modal-handle-container');
+      const currentY = this.getPointerY(e);
+      const deltaY = currentY - this.modalDragStartY;
+      const velocity = deltaY / (e.timeStamp - (this.modalDragTarget as any).startTime);
 
-      // A small delta is treated as a tap
-      if (Math.abs(deltaY) < 10) {
-          if (targetOnHandle) {
-              // Tapping the handle toggles between peeking and visible
-              this.setLyriqModalState(wasPeeking ? 'visible' : 'peeking');
-          } else if (wasPeeking) {
-              // Tapping the content area when peeking expands it
-              this.setLyriqModalState('visible');
-          } else {
-              // Tapping elsewhere when visible does nothing, snaps back
-              this.setLyriqModalState('visible');
-          }
-          this.modalDragTarget = null;
-          return;
-      }
+      const isCurrentlyVisible = this.lyriqControlsModal.classList.contains('visible');
+      const threshold = 100; // Drag distance threshold
 
-      if (wasPeeking) {
-          if (deltaY < -50) { // Dragged up
-              this.setLyriqModalState('visible');
-          } else if (deltaY > 50) { // Dragged down from peeking to hide
-              this.setLyriqModalState('hidden');
-          } else {
-              this.setLyriqModalState('peeking'); // Snap back
-          }
-      } else { // Was visible
-          if (deltaY > 50) { // Dragged down
+      if (isCurrentlyVisible) {
+          if (deltaY > threshold || velocity > 0.5) {
               this.setLyriqModalState('peeking');
           } else {
-              this.setLyriqModalState('visible'); // Snap back
+              this.setLyriqModalState('visible');
+          }
+      } else { // Was peeking
+          if (deltaY < -threshold || velocity < -0.5) {
+              this.setLyriqModalState('visible');
+          } else {
+              this.setLyriqModalState('peeking');
           }
       }
-      this.modalDragTarget = null;
   }
-
+  
   private handleScrubStart(e: MouseEvent | TouchEvent): void {
+    if (e instanceof MouseEvent && e.button !== 0) return;
     if (!this.beatAudioBuffer) return;
+
     this.isScrubbing = true;
-    this.handleScrubMove(e); // Seek immediately on click
+    this.lyriqWaveforms.classList.add('is-scrubbing');
+    if (this.lyriqIsPlaying) this.toggleLyriqPlayback(); // Pause while scrubbing
+    this.updateScrubPosition(e);
   }
 
   private handleScrubMove(e: MouseEvent | TouchEvent): void {
-    if (!this.isScrubbing || !this.beatAudioBuffer) return;
-
-    // Prevent text selection during drag on desktop and default scroll on mobile.
-    e.preventDefault();
-    
-    const waveformRect = this.lyriqWaveforms.getBoundingClientRect();
-    const x = e.type.startsWith('touch') ? (e as TouchEvent).touches[0].clientX - waveformRect.left : (e as MouseEvent).clientX - waveformRect.left;
-    const viewWidth = waveformRect.width;
-
-    // Calculate time based on the current scroll position (derived from currentTime)
-    // and the click offset from the center playhead.
-    const currentPixelOffset = this.lyriqAudioPlayer.currentTime * this.PIXELS_PER_SECOND;
-
-    // The pixel offset of the click from the center playhead
-    const pixelOffsetFromPlayhead = x - (viewWidth / 2);
-    
-    // The target pixel position on the entire timeline
-    const targetPixel = currentPixelOffset + pixelOffsetFromPlayhead;
-
-    // Convert target pixel back to time
-    const targetTime = targetPixel / this.PIXELS_PER_SECOND;
-
-    this.updatePlayheadPosition(targetTime);
+      if (!this.isScrubbing) return;
+      e.preventDefault();
+      this.updateScrubPosition(e);
   }
   
   private handleScrubEnd(): void {
-    this.isScrubbing = false;
+      if (!this.isScrubbing) return;
+      this.isScrubbing = false;
+      this.lyriqWaveforms.classList.remove('is-scrubbing');
   }
 
-  private updatePlayheadPosition(timeInSeconds: number): void {
-    if (!this.lyriqAudioPlayer.duration || !isFinite(this.lyriqAudioPlayer.duration)) return;
+  private updateScrubPosition(e: MouseEvent | TouchEvent): void {
+      if (!this.beatAudioBuffer) return;
 
-    // Clamp the time to valid bounds
-    const newTime = Math.max(0, Math.min(timeInSeconds, this.lyriqAudioPlayer.duration));
+      const rect = this.lyriqWaveforms.getBoundingClientRect();
+      const clientX = e.type.startsWith('touch') ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
+      
+      const playheadOffset = this.lyriqPlayhead.offsetLeft;
+      const waveformScroll = this.lyriqWaveforms.scrollLeft;
 
-    // Only update if the change is significant to avoid stuttering on small drags.
-    if (Math.abs(newTime - this.lyriqAudioPlayer.currentTime) > 0.01) {
-      this.lyriqAudioPlayer.currentTime = newTime;
-      if (this.lyriqVocalAudioPlayer.src) {
-          this.lyriqVocalAudioPlayer.currentTime = newTime;
-      }
-    }
-    
-    // Update visual transform of waveforms
-    const currentPixelOffset = newTime * this.PIXELS_PER_SECOND;
-    const viewWidth = this.lyriqWaveforms.getBoundingClientRect().width;
-    const translateX = (viewWidth / 2) - currentPixelOffset;
+      const clickX = clientX - rect.left + waveformScroll;
+      
+      const newTime = clickX / this.PIXELS_PER_SECOND;
+      const clampedTime = Math.max(0, Math.min(newTime, this.lyriqAudioPlayer.duration));
 
-    this.beatWaveformCanvas.style.transform = `translateX(${translateX}px)`;
-    this.vocalWaveformCanvas.style.transform = `translateX(${translateX}px)`;
-    
-    // Update time display
-    this.lyriqModalTime.textContent = this.formatTime(newTime * 1000).split('.')[0];
+      this.lyriqAudioPlayer.currentTime = clampedTime;
+      this.updatePlayheadPosition(clampedTime);
   }
 
   private renderBeatWaveform(): void {
-    this.renderWaveform(this.beatAudioBuffer, this.beatWaveformCtx, '#A880F7');
-  }
-
-  private renderVocalWaveform(): void {
-    this.renderWaveform(this.vocalAudioBuffer, this.vocalWaveformCtx, '#ff453a');
-  }
-
-  private renderWaveform(buffer: AudioBuffer | null, ctx: CanvasRenderingContext2D | null, color: string): void {
-    if (!buffer || !ctx) return;
-    const canvas = ctx.canvas;
-    
-    const { height } = canvas.getBoundingClientRect();
-    if (canvas.height !== height) {
-        canvas.height = height;
-    }
-    
-    const data = buffer.getChannelData(0);
-    const step = Math.ceil(data.length / canvas.width);
-    const amp = canvas.height / 2;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let i = 0; i < canvas.width; i++) {
-        let min = 1.0;
-        let max = -1.0;
-        for (let j = 0; j < step; j++) {
-            const datum = data[(i * step) + j];
-            if (datum < min) min = datum;
-            if (datum > max) max = datum;
-        }
-        ctx.moveTo(i, (1 + min) * amp);
-        ctx.lineTo(i, (1 + max) * amp);
-    }
-    ctx.stroke();
+    if (!this.beatAudioBuffer || !this.beatWaveformCtx) return;
+    // Fix: Corrected invalid syntax for CSS variable. It should be a string.
+    this.drawWaveform(this.beatAudioBuffer, this.beatWaveformCtx, 'var(--color-accent)');
   }
   
-  private async processAndRenderVocalWaveform(blob: Blob): Promise<void> {
+  private renderVocalWaveform(): void {
+    if (!this.vocalAudioBuffer || !this.vocalWaveformCtx) return;
+    this.drawWaveform(this.vocalAudioBuffer, this.vocalWaveformCtx, '#fff');
+  }
+  
+  private async processAndRenderVocalWaveform(vocalBlob: Blob): Promise<void> {
     try {
-      const arrayBuffer = await blob.arrayBuffer();
-      // Use a temporary AudioContext to avoid conflicts
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      this.vocalAudioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      audioContext.close(); // Clean up immediately
-      this.renderVocalWaveform();
-    } catch (e) {
-      console.error("Error processing vocal audio file:", e);
-      this.vocalAudioBuffer = null;
+        const arrayBuffer = await vocalBlob.arrayBuffer();
+        const audioContext = new AudioContext();
+        this.vocalAudioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        this.renderVocalWaveform();
+    } catch(e) {
+        console.error("Error processing vocal audio:", e);
     }
   }
 
+  private drawWaveform(buffer: AudioBuffer, ctx: CanvasRenderingContext2D, color: string): void {
+      const data = buffer.getChannelData(0);
+      const canvas = ctx.canvas;
+      const width = canvas.width;
+      const height = canvas.height;
+
+      ctx.clearRect(0, 0, width, height);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = color;
+      
+      // Since canvas width is proportional to duration, each pixel has a consistent time value.
+      const step = 1;
+
+      ctx.beginPath();
+      for (let x = 0; x < width; x += step) {
+          // Find the min and max values for this pixel column
+          const startIndex = Math.floor(x * data.length / width);
+          const endIndex = Math.min(startIndex + Math.ceil(data.length / width), data.length);
+          let min = 1.0;
+          let max = -1.0;
+          for (let i = startIndex; i < endIndex; i++) {
+              if (data[i] < min) min = data[i];
+              if (data[i] > max) max = data[i];
+          }
+
+          const y_max = (1 - max) * height / 2;
+          const y_min = (1 - min) * height / 2;
+          
+          ctx.moveTo(x, y_max);
+          ctx.lineTo(x, y_min);
+      }
+      ctx.stroke();
+  }
 
   private startLyriqAnimation(): void {
-      if (this.lyriqAnimationId) {
-          cancelAnimationFrame(this.lyriqAnimationId);
-      }
-
+      this.stopLyriqAnimation();
+      
       const animate = () => {
-          if (!this.lyriqIsPlaying && !this.isRecording) {
-              this.stopLyriqAnimation();
-              return;
-          }
-          
-          // If the user is actively scrubbing, let handleScrubMove take over position updates
-          // to avoid conflicting state changes.
-          if (this.isScrubbing) {
-              this.lyriqAnimationId = requestAnimationFrame(animate); // Keep the loop alive
-              return;
-          }
-
-          this.updatePlayheadPosition(this.lyriqAudioPlayer.currentTime);
+          const currentTime = this.lyriqAudioPlayer.currentTime;
+          this.updatePlayheadPosition(currentTime);
           this.lyriqAnimationId = requestAnimationFrame(animate);
       };
-
-      this.lyriqAnimationId = requestAnimationFrame(animate);
+      animate();
   }
 
   private stopLyriqAnimation(): void {
@@ -1882,78 +1849,76 @@ class VoiceNotesApp {
           this.lyriqAnimationId = null;
       }
   }
+  
+  private updatePlayheadPosition(time: number): void {
+      if (!this.beatAudioBuffer) return;
 
-  // --- Undo/Redo History Management ---
+      const newScrollLeft = (time * this.PIXELS_PER_SECOND) - (this.lyriqWaveforms.clientWidth / 2);
+      this.lyriqWaveforms.scrollLeft = Math.max(0, newScrollLeft);
+      this.lyriqModalTime.textContent = this.formatTime(time * 1000);
+  }
+
+
+  // --- Undo / Redo ---
   private getNoteState(note: Note): NoteState {
-    return {
-      title: note.title,
-      // Deep copy of sections array to prevent mutation issues
-      sections: JSON.parse(JSON.stringify(note.sections)),
-      polishedNote: note.polishedNote,
-      editorFormat: note.editorFormat,
-    };
+      // Deep copy to prevent mutation
+      return JSON.parse(JSON.stringify({
+          title: note.title,
+          sections: note.sections,
+          polishedNote: note.polishedNote,
+          editorFormat: note.editorFormat,
+      }));
   }
   
-  private applyNoteState(noteId: string, state: NoteState): void {
-    const note = this.notes.get(noteId);
-    if (!note) return;
-
-    note.title = state.title;
-    note.sections = JSON.parse(JSON.stringify(state.sections));
-    note.polishedNote = state.polishedNote;
-    note.editorFormat = state.editorFormat;
-
-    // If the currently active note is the one we're updating, re-render its content.
-    if (this.currentNoteId === noteId) {
-        this.editorTitle.textContent = note.title;
-        this.renderNoteContent(note);
-    }
-    
-    this.saveDataToStorage();
-    this.renderSidebar(); // Update title in sidebar
-  }
-
   private saveNoteState(): void {
     if (!this.currentNoteId) return;
-    
-    this.updateCurrentNoteContent(); // Ensure latest content from DOM is in the note object
-    const note = this.notes.get(this.currentNoteId);
+
     const history = this.noteHistories.get(this.currentNoteId);
+    const note = this.notes.get(this.currentNoteId);
+    if (!history || !note) return;
 
-    if (!note || !history) return;
+    const currentState = this.getNoteState(note);
+    const lastUndoState = history.undo[history.undo.length - 1];
     
-    const newState = this.getNoteState(note);
-    const lastState = history.undo[history.undo.length - 1];
-
-    // Avoid saving identical subsequent states
-    if (lastState && JSON.stringify(newState) === JSON.stringify(lastState)) {
+    // Avoid saving identical states
+    if (JSON.stringify(currentState) === JSON.stringify(lastUndoState)) {
       return;
     }
-    
-    history.undo.push(newState);
+
+    history.undo.push(currentState);
     history.redo = []; // Clear redo stack on new action
+    
+    // Limit history size
+    if (history.undo.length > 50) {
+      history.undo.shift();
+    }
     this.updateUndoRedoButtons();
   }
-
+  
   private debouncedSaveState = () => {
-      if (this.debounceTimer) {
-          clearTimeout(this.debounceTimer);
-      }
-      this.debounceTimer = window.setTimeout(() => {
-          this.saveNoteState();
-      }, 1000);
+    if (this.debounceTimer) {
+        clearTimeout(this.debounceTimer);
+    }
+    this.debounceTimer = window.setTimeout(() => {
+        this.updateCurrentNoteContent();
+        this.saveNoteState();
+    }, 800);
   }
 
   private undo(): void {
     if (!this.currentNoteId) return;
     const history = this.noteHistories.get(this.currentNoteId);
-    if (!history || history.undo.length <= 1) return; // Keep the initial state
+    if (!history || history.undo.length <= 1) return; // Can't undo the initial state
 
+    // First, save the current state from the editor into the note object
+    this.updateCurrentNoteContent();
+
+    // Now, pop the last saved state and move it to redo
     const currentState = history.undo.pop()!;
     history.redo.push(currentState);
     
-    const previousState = history.undo[history.undo.length - 1];
-    this.applyNoteState(this.currentNoteId, previousState);
+    // Apply the previous state
+    this.applyNoteState(history.undo[history.undo.length - 1]);
     this.updateUndoRedoButtons();
   }
 
@@ -1962,59 +1927,50 @@ class VoiceNotesApp {
     const history = this.noteHistories.get(this.currentNoteId);
     if (!history || history.redo.length === 0) return;
 
-    const nextState = history.redo.pop()!;
-    history.undo.push(nextState);
-    
-    this.applyNoteState(this.currentNoteId, nextState);
+    const stateToRestore = history.redo.pop()!;
+    history.undo.push(stateToRestore);
+    this.applyNoteState(stateToRestore);
     this.updateUndoRedoButtons();
+  }
+
+  private applyNoteState(state: NoteState): void {
+      if (!this.currentNoteId) return;
+      const note = this.notes.get(this.currentNoteId);
+      if (!note) return;
+      
+      note.title = state.title;
+      note.sections = state.sections;
+      note.polishedNote = state.polishedNote;
+      note.editorFormat = state.editorFormat;
+
+      this.editorTitle.textContent = note.title;
+      this.renderNoteContent(note);
+      this.saveDataToStorage();
   }
   
   private updateUndoRedoButtons(): void {
-      if (!this.currentNoteId) {
-          this.undoButton.disabled = true;
-          this.redoButton.disabled = true;
-          return;
-      }
-      const history = this.noteHistories.get(this.currentNoteId);
-      this.undoButton.disabled = !history || history.undo.length <= 1;
-      this.redoButton.disabled = !history || history.redo.length === 0;
+    if (!this.currentNoteId) {
+        this.undoButton.disabled = true;
+        this.redoButton.disabled = true;
+        return;
+    };
+    const history = this.noteHistories.get(this.currentNoteId);
+    this.undoButton.disabled = !history || history.undo.length <= 1;
+    this.redoButton.disabled = !history || history.redo.length === 0;
   }
-  
-  private handleKeyDown(e: KeyboardEvent): void {
-    const isModKey = e.metaKey || e.ctrlKey;
-    if (!isModKey || this.activeView !== 'editor') return;
 
-    if (e.key === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) {
-            this.redo();
-        } else {
-            this.undo();
-        }
-    } else if (e.key === 'y') {
-        e.preventDefault();
-        this.redo();
+  // --- Utility Functions ---
+  private setFinalStatus(message: string, isError = false, duration = 3000): void {
+    this.recordingStatus.textContent = message;
+    if (isError) {
+      this.statusIndicatorDiv.classList.add('error'); // Assuming an 'error' class for styling
     }
-  }
+    document.body.classList.remove('is-processing');
 
-  private setAppHeight(): void {
-    document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
-  }
-
-
-  // --- Utility functions ---
-  private getAudioDuration(url: string): Promise<number> {
-    return new Promise((resolve, reject) => {
-        const audio = new Audio();
-        audio.addEventListener('loadedmetadata', () => {
-            resolve(audio.duration * 1000); // return duration in milliseconds
-        });
-        audio.addEventListener('error', (e) => {
-            console.error("Error loading audio metadata:", e);
-            reject(new Error("Could not load audio metadata."));
-        });
-        audio.src = url; // Set src last to ensure listeners are attached
-    });
+    setTimeout(() => {
+      this.recordingStatus.textContent = 'Ready to record';
+      this.statusIndicatorDiv.classList.remove('error');
+    }, duration);
   }
 
   private async blobToBase64(blob: Blob): Promise<string> {
@@ -2030,55 +1986,76 @@ class VoiceNotesApp {
   }
   
   private base64ToBlob(base64: string, mimeType: string): Blob {
-    const byteCharacters = atob(base64);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    return new Blob([byteArray], { type: mimeType });
+      const byteCharacters = atob(base64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      return new Blob([byteArray], { type: mimeType });
+  }
+  
+  private async getAudioDuration(url: string): Promise<number> {
+      return new Promise((resolve, reject) => {
+          const audio = new Audio();
+          audio.addEventListener('loadedmetadata', () => {
+              resolve(audio.duration * 1000); // Return duration in milliseconds
+          });
+          audio.addEventListener('error', (e) => {
+              reject(e.error || new Error('Failed to load audio metadata.'));
+          });
+          audio.src = url;
+      });
   }
 
-  private formatTime(ms: number, includeMilliseconds: boolean = false): string {
+  private formatTime(ms: number, showMilliseconds = false): string {
     const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60).toString();
-    const seconds = (totalSeconds % 60).toString().padStart(2, '0');
-    if (includeMilliseconds) {
-      const milliseconds = Math.floor((ms % 1000) / 10).toString().padStart(2, '0');
-      return `${minutes.padStart(2, '0')}:${seconds}.${milliseconds}`;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const milliseconds = Math.floor((ms % 1000) / 10);
+    
+    if (showMilliseconds) {
+        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(2, '0')}`;
     }
-    return `${minutes.padStart(2, '0')}:${seconds}`;
+    return `${minutes.toString()}:${seconds.toString().padStart(2, '0')}`;
   }
 
-  private updatePlaceholderVisibility(element: HTMLElement) {
-    if (element.textContent?.trim()) {
-      element.classList.remove('placeholder-active');
-    } else {
-      element.classList.add('placeholder-active');
-    }
+  private setAppHeight(): void {
+    const vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
   }
 
-  private setFinalStatus(message: string, isError: boolean = false): void {
-    document.body.classList.remove('is-processing');
-    this.recordingStatus.textContent = message;
-    setTimeout(() => {
-        if (!this.isRecording) {
-            this.recordingStatus.textContent = 'Ready to record';
-        }
-    }, 4000);
+  private updatePlaceholderVisibility(element: HTMLElement): void {
+      const text = (element as HTMLDivElement).innerText;
+      if (text.trim() === '') {
+          element.classList.add('placeholder-active');
+      } else {
+          element.classList.remove('placeholder-active');
+      }
+  }
+
+  private handleKeyDown(e: KeyboardEvent): void {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) {
+              this.redo();
+          } else {
+              this.undo();
+          }
+      }
   }
 
   private handleOutsideClick(e: MouseEvent): void {
+    const target = e.target as HTMLElement;
+    // Hide sidebar on outside click on mobile
     if (this.isMobile && !this.appContainer.classList.contains('sidebar-collapsed')) {
-        const target = e.target as HTMLElement;
-        // If the click is not on the sidebar or the toggle button that opens it, then close it.
-        if (!this.sidebar.contains(target) && !this.sidebarToggleButton.contains(target)) {
-            this.appContainer.classList.add('sidebar-collapsed');
-        }
+      if (!target.closest('.sidebar') && !target.closest('.sidebar-toggle-button')) {
+        this.appContainer.classList.add('sidebar-collapsed');
+      }
     }
   }
+
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  new VoiceNotesApp();
-});
+// Initialize the app
+new VoiceNotesApp();
