@@ -80,9 +80,6 @@
             <button class="action-button" id="themeToggleButton" title="Toggle Theme">
               <i class="fas fa-sun"></i>
             </button>
-            <button class="action-button" id="newButton" title="New Note / Clear">
-              <i class="fas fa-file"></i>
-            </button>
           </div>
         </header>
         <div class="note-area">
@@ -154,6 +151,9 @@
         </div>
 
         <div class="recording-interface">
+          <button id="finishRecordingButton" class="finish-recording-button" title="Finish Recording">
+            <i class="fas fa-check"></i>
+          </button>
           <div id="liveRecordingTitle" class="live-recording-title">
             Recording
           </div>
@@ -166,16 +166,9 @@
           </div>
           <div class="recording-controls">
             <button id="recordButton" class="record-button" title="Start/Stop Recording">
-              <div class="record-button-inner">
-                <i class="fas fa-microphone"></i>
-                <i class="fas fa-stop" style="display: none;"></i>
-              </div>
-              <svg class="record-waves" viewBox="0 0 200 200">
-                <circle class="wave wave1" cx="100" cy="100" r="40" />
-                <circle class="wave wave2" cx="100" cy="100" r="70" />
-                <circle class="wave wave3" cx="100" cy="100" r="100" />
-              </svg>
-              <span class="record-text">Record</span>
+              <i class="fas fa-microphone"></i>
+              <i class="fas fa-stop" style="display: none;"></i>
+              <span id="recordButtonText" class="record-button-text"></span>
             </button>
           </div>
         </div>

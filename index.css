@@ -1,3 +1,4 @@
+
 @import url(https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css);
 @import url(https://fonts.cdnfonts.com/css/sf-mono);
 
@@ -21,6 +22,7 @@
   --color-cursor-dark: var(--color-accent-dark);
   --color-border-dark: rgba(255, 255, 255, 0.12);
   --color-recording-dark: #ff453a;
+  --color-recording-paused-dark: #b53730;
   --color-success-dark: #32d74b;
   --sidebar-bg-dark: #181818;
   --sidebar-border-dark: #2a2a2a;
@@ -49,6 +51,7 @@
   --color-cursor-light: var(--color-accent-light);
   --color-border-light: #DCDCDC;
   --color-recording-light: #ff3b30;
+  --color-recording-paused-light: #d63027;
   --color-success-light: #30d158;
   --sidebar-bg-light: #FFFFFF;
   --sidebar-border-light: #EAEAEA;
@@ -78,6 +81,7 @@
   --color-cursor: var(--color-cursor-dark);
   --color-border: var(--color-border-dark);
   --color-recording: var(--color-recording-dark);
+  --color-recording-paused: var(--color-recording-paused-dark);
   --color-success: var(--color-success-dark);
   --sidebar-bg: var(--sidebar-bg-dark);
   --sidebar-border: var(--sidebar-border-dark);
@@ -122,6 +126,7 @@ body.light-mode {
   --color-cursor: var(--color-cursor-light);
   --color-border: #DCDCDC;
   --color-recording: #ff3b30;
+  --color-recording-paused: var(--color-recording-paused-light);
   --color-success: #30d158;
   --sidebar-bg: #F2F2F7;
   --sidebar-border: #EAEAEA;
@@ -784,25 +789,28 @@ body.is-recording #liveRecordingTimerDisplay {
 }
 
 .live-recording-title {
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 600;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
+  color: var(--color-text);
 }
 #liveWaveformCanvas {
   width: 100%;
-  height: 100px;
-  margin-bottom: 24px;
+  height: 60px;
+  margin-bottom: 16px;
 }
 #liveRecordingTimerDisplay {
   font-family: var(--font-mono);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 500;
+  color: var(--color-text-secondary);
   letter-spacing: 0.02em;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
 .status-indicator {
   height: 20px;
   margin-bottom: 12px;
+  display: none;
 }
 .status-text {
   font-size: 14px;
@@ -819,6 +827,8 @@ body.is-processing .status-text {
   justify-content: center;
   align-items: center;
   width: 100%;
+  margin-top: auto;
+  padding-bottom: 16px;
 }
 
 .record-button {
@@ -827,6 +837,7 @@ body.is-processing .status-text {
   border-radius: 50%;
   border: none;
   background-color: var(--color-recording);
+  color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -835,71 +846,63 @@ body.is-processing .status-text {
   transition: all var(--transition-normal);
   box-shadow: var(--shadow-md);
 }
-.record-button .record-button-inner {
-  width: 56px;
-  height: 56px;
-  background-color: var(--color-recording);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  z-index: 2;
-  transition: all var(--transition-normal);
-  border: 2px solid rgba(0,0,0,0.1);
-}
+
 .record-button .fa-microphone, .record-button .fa-stop {
-  color: #fff;
   font-size: 24px;
 }
 .record-button .fa-stop {
   display: none;
 }
 
-.record-button.recording .record-button-inner {
-  border-radius: 12px;
-  transform: scale(0.9);
-}
 .record-button.recording .fa-microphone { display: none; }
 .record-button.recording .fa-stop { display: block; }
+.record-button.recording {
+  border-radius: 16px;
+}
 
+.record-button.paused {
+  width: 180px;
+  height: 64px;
+  border-radius: 99px;
+  background-color: var(--color-recording-paused);
+}
 
-.record-text {
+.record-button-text {
+    color: white;
+    font-size: 18px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.finish-recording-button {
+  display: none;
   position: absolute;
-  bottom: -24px;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  pointer-events: none;
+  top: 20px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: var(--color-accent);
+  color: white;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-fast);
 }
-.record-waves {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  width: 200px;
-  height: 200px;
-  transform: translate(-50%, -50%) scale(0.5);
-  top: 50%; left: 50%;
-  z-index: 1;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.5s ease;
-}
-.record-button.recording .record-waves {
-  opacity: 1;
-}
-.wave {
-  fill: none;
-  stroke: var(--color-recording);
-  stroke-width: 2;
-  transform-origin: center;
-}
-.wave1 { animation: pulse 3s infinite cubic-bezier(0.25, 0.46, 0.45, 0.94); }
-.wave2 { animation: pulse 3s infinite cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.5s; }
-.wave3 { animation: pulse 3s infinite cubic-bezier(0.25, 0.46, 0.45, 0.94) 1s; }
 
-@keyframes pulse {
-  0% { transform: scale(0.4); opacity: 1; }
-  100% { transform: scale(1.2); opacity: 0; }
+.finish-recording-button:active {
+  transform: scale(0.9);
 }
+
+body.light-mode .finish-recording-button {
+  color: white;
+}
+
 
 /* --- Notes List View --- */
 .notes-list-view {
@@ -1374,14 +1377,19 @@ body.light-mode ::-webkit-scrollbar-thumb:hover {
     display: flex;
   }
   .main-header {
-    padding: 12px 16px;
+    /* Increased right padding to avoid overlap with preview controls */
+    padding: 12px 100px 12px 16px;
+  }
+  .notes-list-header, .lyriq-header {
+    /* Increased right padding to avoid overlap with preview controls */
+    padding-right: 100px;
   }
   .note-content-wrapper {
     padding: 16px;
   }
   .editor-title { font-size: 20px; }
   .header-right-cluster .action-button { display: none; } /* Hide some on mobile */
-  .header-right-cluster #themeToggleButton, .header-right-cluster #newButton, .header-right-cluster #formatToggleButton { display: flex; } /* Keep these */
+  .header-right-cluster #themeToggleButton, .header-right-cluster #formatToggleButton { display: flex; } /* Keep these */
   
   .lyriq-controls-modal.visible {
     height: 50vh;
@@ -1390,7 +1398,8 @@ body.light-mode ::-webkit-scrollbar-thumb:hover {
 
 @media (max-width: 768px) {
   .main-header {
-    padding: 8px;
+    /* Adjusted padding for smaller screens to avoid preview controls */
+    padding: 8px 90px 8px 8px;
   }
   .header-left-cluster {
     min-width: 0;

@@ -53,6 +53,7 @@ class VoiceNotesApp {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private isRecording = false;
+  private isPaused = false;
   private stream: MediaStream | null = null;
 
   // Live recording UI properties
@@ -78,8 +79,8 @@ class VoiceNotesApp {
   // DOM Elements
   private appContainer: HTMLDivElement;
   private recordButton: HTMLButtonElement;
+  private recordButtonText: HTMLSpanElement;
   private recordingStatus: HTMLDivElement;
-  private newButton: HTMLButtonElement;
   private themeToggleButton: HTMLButtonElement;
   private themeToggleIcon: HTMLElement;
   private editorTitle: HTMLDivElement;
@@ -105,6 +106,7 @@ class VoiceNotesApp {
 
   // Recording interface elements
   private recordingInterface: HTMLDivElement;
+  private finishRecordingButton: HTMLButtonElement;
   private liveRecordingTitle: HTMLDivElement;
   private liveWaveformCanvas: HTMLCanvasElement;
   private liveWaveformCtx: CanvasRenderingContext2D | null;
@@ -188,8 +190,8 @@ class VoiceNotesApp {
     // Get all necessary DOM elements
     this.appContainer = document.getElementById('appContainer') as HTMLDivElement;
     this.recordButton = document.getElementById('recordButton') as HTMLButtonElement;
+    this.recordButtonText = document.getElementById('recordButtonText') as HTMLSpanElement;
     this.recordingStatus = document.getElementById('recordingStatus') as HTMLDivElement;
-    this.newButton = document.getElementById('newButton') as HTMLButtonElement;
     this.themeToggleButton = document.getElementById('themeToggleButton') as HTMLButtonElement;
     this.themeToggleIcon = this.themeToggleButton.querySelector('i') as HTMLElement;
     this.editorTitle = document.querySelector('.editor-title') as HTMLDivElement;
@@ -215,6 +217,7 @@ class VoiceNotesApp {
     
     // Recording UI elements
     this.recordingInterface = document.querySelector('.recording-interface') as HTMLDivElement;
+    this.finishRecordingButton = document.getElementById('finishRecordingButton') as HTMLButtonElement;
     this.liveRecordingTitle = document.getElementById('liveRecordingTitle') as HTMLDivElement;
     this.liveWaveformCanvas = document.getElementById('liveWaveformCanvas') as HTMLCanvasElement;
     this.liveRecordingTimerDisplay = document.getElementById('liveRecordingTimerDisplay') as HTMLDivElement;
@@ -291,7 +294,7 @@ class VoiceNotesApp {
   private bindEventListeners(): void {
     // Core controls
     this.recordButton.addEventListener('click', () => this.toggleRecording());
-    this.newButton.addEventListener('click', () => this.createNewNote());
+    this.finishRecordingButton.addEventListener('click', () => this.finishRecording());
     this.themeToggleButton.addEventListener('click', () => this.toggleTheme());
     this.formatToggleButton.addEventListener('click', () => this.handleFormatToggle());
     this.sendToLyriqButton.addEventListener('click', () => this.setActiveView('lyriq'));
@@ -929,43 +932,69 @@ class VoiceNotesApp {
   }
 
   private async toggleRecording(): Promise<void> {
-    if (this.isRecording) {
-      // Stop logic
+      // If not in a recording session, start one
+      if (!this.isRecording) {
+          if (this.activeView === 'lyriq') {
+              this.setActiveMixerTrack('vocal');
+          }
+
+          if (navigator.permissions?.query) { // Optional chaining for safety
+              try {
+                  const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+                  if (permissionStatus.state === 'denied') {
+                      this.recordingStatus.innerHTML = 'Microphone access is blocked. <br> Please enable it in your browser settings to record.';
+                      return;
+                  }
+                  await this.requestMicrophoneAndStart();
+              } catch (e) {
+                  console.error("Permissions API error, falling back:", e);
+                  await this.requestMicrophoneAndStart();
+              }
+          } else {
+              await this.requestMicrophoneAndStart();
+          }
+          return;
+      }
+
+      // If already in a session, toggle pause/resume
+      if (this.isPaused) {
+          // Resume
+          this.mediaRecorder?.resume();
+          this.isPaused = false;
+          this.startTimer();
+          if (this.activeView !== 'lyriq') {
+              this.startLiveWaveform();
+          }
+          this.updateRecordingStateUI();
+      } else {
+          // Pause
+          this.mediaRecorder?.pause();
+          this.isPaused = true;
+          this.stopTimer();
+          if (this.activeView !== 'lyriq') {
+              this.stopLiveWaveform();
+              this.drawPausedWaveform();
+          }
+          this.updateRecordingStateUI();
+      }
+  }
+
+  private async finishRecording(): Promise<void> {
+      if (!this.isRecording) return;
+
       if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-        this.mediaRecorder.stop();
+          this.mediaRecorder.stop();
       }
       this.isRecording = false;
-      this.updateRecordingUI(false);
+      this.isPaused = false;
       
-      if (this.activeView === 'lyriq') {
-        // No specific stop action needed here anymore, onstop handles it
-      } else {
-        this.stopLiveWaveform();
-        this.stopTimer();
+      if (this.activeView !== 'lyriq') {
+          this.stopLiveWaveform();
+          this.stopTimer();
       }
 
-    } else {
-      // Start logic
-      if (this.activeView === 'lyriq') {
-        this.setActiveMixerTrack('vocal');
-      }
-
-      if (navigator.permissions?.query) { // Optional chaining for safety
-        try {
-            const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-            if (permissionStatus.state === 'denied') {
-                this.recordingStatus.innerHTML = 'Microphone access is blocked. <br> Please enable it in your browser settings to record.';
-                return; 
-            }
-            await this.requestMicrophoneAndStart();
-        } catch(e) {
-            console.error("Permissions API error, falling back:", e);
-            await this.requestMicrophoneAndStart();
-        }
-      } else {
-          await this.requestMicrophoneAndStart();
-      }
-    }
+      this.updateRecordingStateUI();
+      // 'onstop' will handle the rest
   }
 
   private async startRecording(): Promise<void> {
@@ -1049,8 +1078,8 @@ class VoiceNotesApp {
     
         this.mediaRecorder.start();
         this.isRecording = true;
-        this.updateRecordingUI(true);
-
+        this.isPaused = false;
+        
         if (this.activeView === 'lyriq') {
             this.vocalWaveformCtx?.clearRect(0,0, this.vocalWaveformCanvas.width, this.vocalWaveformCanvas.height);
             // Do NOT reset playhead, allow for punch-in recording
@@ -1058,15 +1087,21 @@ class VoiceNotesApp {
                 this.toggleLyriqPlayback();
             }
         } else {
+            const note = this.notes.get(this.currentNoteId!);
+            if (note) {
+                this.liveRecordingTitle.textContent = note.title || 'New Recording';
+            }
             this.startLiveWaveform();
             this.startTimer();
         }
+        
+        this.updateRecordingStateUI();
 
     } catch (error) {
         console.error("Error creating MediaRecorder:", error);
         this.recordingStatus.textContent = 'Recording failed to start.';
         this.isRecording = false;
-        this.updateRecordingUI(false);
+        this.updateRecordingStateUI();
     }
   }
 
@@ -1201,24 +1236,39 @@ class VoiceNotesApp {
       }
   }
   
-  private updateRecordingUI(isRecording: boolean): void {
-    document.body.classList.toggle('is-recording', isRecording);
-    this.recordButton.classList.toggle('recording', isRecording);
-    this.lyriqModalRecordBtn.classList.toggle('recording', isRecording);
-    this.lyriqVocalIndicator.classList.toggle('recording', isRecording);
-    
+  private updateRecordingStateUI(): void {
+    const isSessionActive = this.isRecording;
+    document.body.classList.toggle('is-recording', isSessionActive);
+    document.body.classList.toggle('is-paused', this.isPaused && isSessionActive);
+    this.finishRecordingButton.style.display = isSessionActive ? 'flex' : 'none';
+
+    this.recordButton.classList.remove('recording', 'paused');
     const recordIcon = this.recordButton.querySelector('.fa-microphone') as HTMLElement;
     const stopIcon = this.recordButton.querySelector('.fa-stop') as HTMLElement;
-    
-    if (isRecording) {
-      recordIcon.style.display = 'none';
-      stopIcon.style.display = 'inline-block';
-      this.recordingStatus.textContent = 'Recording...';
-    } else {
-      recordIcon.style.display = 'inline-block';
-      stopIcon.style.display = 'none';
-      this.recordingStatus.textContent = 'Processing...';
+
+    if (isSessionActive) {
+        this.recordButtonText.textContent = '';
+        recordIcon.style.display = 'none';
+        stopIcon.style.display = 'none';
+        if (this.isPaused) {
+            this.recordButton.classList.add('paused');
+            this.recordButtonText.textContent = 'RESUME';
+            this.statusIndicatorDiv.textContent = 'Paused';
+        } else { // Actively recording
+            this.recordButton.classList.add('recording');
+            stopIcon.style.display = 'inline-block';
+            this.statusIndicatorDiv.textContent = 'Recording...';
+        }
+    } else { // Idle
+        this.recordButtonText.textContent = '';
+        recordIcon.style.display = 'inline-block';
+        stopIcon.style.display = 'none';
+        this.statusIndicatorDiv.textContent = 'Processing...'; // This gets updated by setFinalStatus later
     }
+
+    // Lyriq view specific updates
+    this.lyriqModalRecordBtn.classList.toggle('recording', this.isRecording && !this.isPaused);
+    this.lyriqVocalIndicator.classList.toggle('recording', this.isRecording && !this.isPaused);
   }
 
   // --- Live Waveform ---
@@ -1234,7 +1284,7 @@ class VoiceNotesApp {
     this.waveformDataArray = new Uint8Array(this.analyserNode.frequencyBinCount);
 
     const draw = () => {
-      if (!this.isRecording || !this.analyserNode || !this.waveformDataArray || !this.liveWaveformCtx) {
+      if (!this.isRecording || this.isPaused || !this.analyserNode || !this.waveformDataArray || !this.liveWaveformCtx) {
         return;
       }
       
@@ -1286,10 +1336,37 @@ class VoiceNotesApp {
         }, 100);
     }
   }
+
+  private drawPausedWaveform(): void {
+    if (!this.liveWaveformCtx) return;
+    const canvas = this.liveWaveformCtx.canvas;
+    this.liveWaveformCtx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const isDarkMode = !document.body.classList.contains('light-mode');
+    const centerY = canvas.height / 2;
+
+    // Draw dotted line
+    this.liveWaveformCtx.strokeStyle = isDarkMode ? '#555' : '#ccc';
+    this.liveWaveformCtx.lineWidth = 1;
+    this.liveWaveformCtx.setLineDash([2, 4]);
+    this.liveWaveformCtx.beginPath();
+    this.liveWaveformCtx.moveTo(0, centerY);
+    this.liveWaveformCtx.lineTo(canvas.width / 2 - 5, centerY);
+    this.liveWaveformCtx.stroke();
+    
+    // Draw vertical playhead
+    this.liveWaveformCtx.setLineDash([]);
+    this.liveWaveformCtx.strokeStyle = isDarkMode ? '#82aaff' : '#007AFF';
+    this.liveWaveformCtx.lineWidth = 2;
+    this.liveWaveformCtx.beginPath();
+    this.liveWaveformCtx.moveTo(canvas.width / 2, 0);
+    this.liveWaveformCtx.lineTo(canvas.width / 2, canvas.height);
+    this.liveWaveformCtx.stroke();
+  }
   
   // --- Timers ---
   private startTimer(): void {
-    this.recordingStartTime = Date.now();
+    this.recordingStartTime = Date.now() - (this.noteAudioPlayer.currentTime * 1000 || 0);
     this.stopTimer(); // Clear any existing timer
 
     this.timerIntervalId = window.setInterval(() => {
