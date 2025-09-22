@@ -84,33 +84,7 @@
         </header>
         <div class="note-area">
           <div class="note-content-wrapper">
-            <div class="audio-playback-container" id="audioPlaybackContainer">
-              <div class="playback-info">
-                  <div class="playback-title">New Recording</div>
-                  <div class="playback-date"></div>
-                  <div class="playback-details">
-                      <span id="playbackDurationDisplay"></span>
-                      <span id="playbackTimeDisplay"></span>
-                  </div>
-              </div>
-              <div class="playback-controls">
-                  <button id="playbackRewindButton" class="playback-control-btn seek-btn" aria-label="Rewind 15 seconds">
-                      <i class="fas fa-rotate-left"></i>
-                      <span>15</span>
-                  </button>
-                  <button id="playbackPlayButton" class="playback-control-btn" aria-label="Play">
-                      <i class="fas fa-play play-icon"></i>
-                      <span class="play-text">Play</span>
-                      <i class="fas fa-pause pause-icon" style="display: none;"></i>
-                  </button>
-                  <button id="playbackForwardButton" class="playback-control-btn seek-btn" aria-label="Forward 15 seconds">
-                      <i class="fas fa-rotate-right"></i>
-                      <span>15</span>
-                  </button>
-              </div>
-              <audio id="noteAudioPlayer" style="display: none;"></audio>
-            </div>
-             <div id="songStructureEditor">
+            <div id="songStructureEditor">
               <!-- Song sections will be dynamically rendered here -->
             </div>
             <div id="openFormatEditor">
@@ -150,34 +124,18 @@
           </div>
         </div>
 
-        <div class="recording-interface">
-          <button id="finishRecordingButton" class="finish-recording-button" title="Finish Recording">
-            <i class="fas fa-check"></i>
-          </button>
-          <div id="liveRecordingTitle" class="live-recording-title">
-            Recording
-          </div>
-          <canvas id="liveWaveformCanvas"></canvas>
-          <div id="liveRecordingTimerDisplay" class="live-recording-timer">
-            00:00.00
-          </div>
-          <div class="status-indicator">
-            <span id="recordingStatus" class="status-text">Ready to record</span>
-          </div>
-          <div class="recording-controls">
-            <button id="recordButton" class="record-button" title="Start/Stop Recording">
-              <i class="fas fa-microphone"></i>
-              <i class="fas fa-stop" style="display: none;"></i>
-              <span id="recordButtonText" class="record-button-text"></span>
-            </button>
-          </div>
-        </div>
-        
         <div class="list-view-fab-container">
             <button class="list-view-new-note-fab" title="New Note">
                 <i class="fas fa-plus"></i>
             </button>
         </div>
+
+        <div class="editor-fab-container">
+          <button id="startRecordingFab" class="editor-fab" title="Start Recording">
+              <i class="fas fa-microphone"></i>
+          </button>
+        </div>
+
       </div>
       
       <div class="lyriq-player-view">
@@ -208,13 +166,10 @@
               <div class="lyriq-modal-handle-container" id="lyriqModalHandle">
                 <div class="lyriq-modal-handle"></div>
               </div>
+              <span id="lyriqModalTime">0:00</span>
               
-              <div class="lyriq-modal-header">
-                <span id="lyriqModalTime">0:00</span>
-              </div>
-
               <div class="lyriq-waveform-container">
-                <div class="lyriq-track-labels">
+                <div class="lyriq-modal-track-indicators">
                     <button class="lyriq-track-btn" id="lyriqAddBeatBtn" data-track="beat">
                         <i class="fas fa-music"></i>
                     </button>
@@ -223,27 +178,25 @@
                     </button>
                 </div>
                 <div class="lyriq-waveforms">
-                    <div id="lyriqPlayhead" class="lyriq-playhead"></div>
                     <canvas id="beatWaveformCanvas"></canvas>
                     <canvas id="vocalWaveformCanvas"></canvas>
                 </div>
+                <div id="lyriqPlayhead" class="lyriq-playhead"></div>
               </div>
       
               <div class="lyriq-playback-controls">
-                  <div class="lyriq-volume-control">
-                    <button id="lyriqVolumeBtn" class="lyriq-control-btn-round" title="Mute/Unmute">
-                        <i class="fas fa-volume-up"></i>
-                    </button>
-                    <input type="range" id="lyriqVolumeSlider" class="volume-slider" min="0" max="1" step="0.01" value="1">
-                  </div>
-                  <div class="lyriq-main-controls">
-                    <button id="lyriqModalRecordBtn" title="Record">
-                        <div class="record-dot"></div>
-                    </button>
-                    <button id="lyriqModalPlayBtn" class="lyriq-control-btn-round" title="Play/Pause">
-                        <i class="fas fa-play"></i>
-                    </button>
-                  </div>
+                <button id="lyriqVolumeBtn" class="lyriq-control-btn-simple" title="Mute/Unmute">
+                    <i class="fas fa-volume-up"></i>
+                </button>
+                <input type="range" id="lyriqVolumeSlider" class="volume-slider" min="0" max="1" step="0.01" value="1">
+                
+                <button id="lyriqModalRecordBtn" title="Record">
+                    <div class="record-dot"></div>
+                </button>
+
+                <button id="lyriqModalPlayBtn" class="lyriq-control-btn-simple" title="Play/Pause">
+                    <i class="fas fa-play"></i>
+                </button>
               </div>
           </div>
           <audio id="lyriqAudio"></audio>
@@ -251,6 +204,32 @@
           <input id="audioUpload" type="file" accept="audio/mp3,audio/wav/*" style="display:none">
       </div>
 
+    </div>
+
+    <div class="recording-interface" id="recordingInterface">
+      <div class="recording-peek-indicator"></div>
+      <div class="recording-interface-handle-container" id="recordingInterfaceHandle">
+          <div class="recording-interface-handle"></div>
+      </div>
+      <button id="finishRecordingButton" class="finish-recording-button" title="Finish Recording">
+        <i class="fas fa-check"></i>
+      </button>
+      <div id="liveRecordingTitle" class="live-recording-title">
+        Recording
+      </div>
+      <div id="liveRecordingTimerDisplay" class="live-recording-timer">
+        00:00.00
+      </div>
+      <canvas id="liveWaveformCanvas"></canvas>
+      <div id="recordingStatus" class="status-indicator">
+      </div>
+      <div class="recording-controls">
+        <button id="recordButton" class="record-button" title="Start/Pause/Redo Recording">
+          <i class="fas fa-microphone"></i>
+          <i class="fas fa-stop" style="display: none;"></i>
+          <span id="recordButtonText" class="record-button-text"></span>
+        </button>
+      </div>
     </div>
 
     <div id="contextMenu" class="context-menu"></div>
