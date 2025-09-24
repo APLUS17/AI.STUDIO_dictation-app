@@ -161,7 +161,6 @@ class VoiceNotesApp {
   private lyriqModalRewindBtn: HTMLButtonElement;
   private lyriqModalForwardBtn: HTMLButtonElement;
   private lyriqModalPeekTitle: HTMLHeadingElement;
-  private lyriqModalPeekSubtitle: HTMLSpanElement;
   private lyriqModalTime: HTMLSpanElement;
 
   // Lyriq Modal: Expanded View
@@ -274,7 +273,6 @@ class VoiceNotesApp {
     this.lyriqModalRewindBtn = document.getElementById('lyriqModalRewindBtn') as HTMLButtonElement;
     this.lyriqModalForwardBtn = document.getElementById('lyriqModalForwardBtn') as HTMLButtonElement;
     this.lyriqModalPeekTitle = document.getElementById('lyriqModalPeekTitle') as HTMLHeadingElement;
-    this.lyriqModalPeekSubtitle = document.getElementById('lyriqModalPeekSubtitle') as HTMLSpanElement;
     this.lyriqModalTime = document.getElementById('lyriqModalTime') as HTMLSpanElement;
 
     // Lyriq Modal: Expanded View
@@ -440,7 +438,7 @@ class VoiceNotesApp {
     
     // Lyriq Waveform Scrubbing
     this.lyriqWaveforms.addEventListener('mousedown', (e) => this.handleScrubStart(e));
-    this.lyriqWaveforms.addEventListener('touchstart', (e) => this.handleScrubStart(e), { passive: true });
+    this.lyriqWaveforms.addEventListener('touchstart', (e) => this.handleScrubStart(e), { passive: false });
     document.addEventListener('mousemove', (e) => this.handleScrubMove(e));
     document.addEventListener('touchmove', (e) => this.handleScrubMove(e), { passive: false });
     document.addEventListener('mouseup', () => this.handleScrubEnd());
@@ -1835,7 +1833,6 @@ class VoiceNotesApp {
               // Handle case with no notes at all
               this.lyriqSongTitle.textContent = 'No Note Selected';
               this.lyriqModalPeekTitle.textContent = 'No Note Selected';
-              this.lyriqModalPeekSubtitle.textContent = 'Create a new note';
               this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Create or select a note to see lyrics here.</p>';
               return;
           }
@@ -1847,9 +1844,6 @@ class VoiceNotesApp {
       this.lyriqSongTitle.textContent = note.title;
       this.lyriqSongSubtitle.textContent = new Date(note.timestamp).toLocaleDateString();
       this.lyriqModalPeekTitle.textContent = note.title;
-      this.lyriqModalPeekSubtitle.textContent = new Date(note.timestamp).toLocaleString('en-US', {
-          month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true
-      });
 
       if (note.syncedLyrics && note.syncedLyrics.length > 0) {
           this.lyricsData = note.syncedLyrics;
@@ -1905,6 +1899,8 @@ class VoiceNotesApp {
         this.beatWaveformCanvas.width = canvasWidth;
         this.vocalWaveformCanvas.width = canvasWidth;
 
+        this.lyriqWaveforms.scrollLeft = 0;
+
         this.renderBeatWaveform();
         // Rerender vocal waveform if it exists, as canvas has been resized
         if (this.vocalAudioBuffer) {
@@ -1949,16 +1945,12 @@ class VoiceNotesApp {
   private handleRewind = (): void => {
       if (!this.lyriqAudioPlayer) return;
       const newTime = Math.max(0, this.lyriqAudioPlayer.currentTime - 15);
-      this.lyriqAudioPlayer.currentTime = newTime;
-      if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.currentTime = newTime;
       this.updatePlayheadPosition(newTime);
   }
 
   private handleForward = (): void => {
       if (!this.lyriqAudioPlayer || !this.lyriqAudioPlayer.duration) return;
       const newTime = Math.min(this.lyriqAudioPlayer.duration, this.lyriqAudioPlayer.currentTime + 15);
-      this.lyriqAudioPlayer.currentTime = newTime;
-      if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.currentTime = newTime;
       this.updatePlayheadPosition(newTime);
   }
 
@@ -2316,24 +2308,20 @@ class VoiceNotesApp {
   }
 
   private updateScrubPosition(e: MouseEvent | TouchEvent): void {
-      if (!this.beatAudioBuffer) return;
+    if (!this.beatAudioBuffer || !this.lyriqAudioPlayer.duration) return;
 
-      const rect = this.lyriqWaveforms.getBoundingClientRect();
-      const clientX = e.type.startsWith('touch') ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
-      
-      const waveformScroll = this.lyriqWaveforms.scrollLeft;
+    const rect = this.lyriqWaveforms.getBoundingClientRect();
+    const clientX = e.type.startsWith('touch') ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
+    
+    const absoluteX = this.lyriqWaveforms.scrollLeft + (clientX - rect.left);
+    const canvasStartOffset = rect.width / 2;
+    const positionOnCanvas = absoluteX - canvasStartOffset;
+    const newTime = positionOnCanvas / this.PIXELS_PER_SECOND;
+    
+    // Clamp the time to be within the audio duration.
+    const clampedTime = Math.max(0, Math.min(newTime, this.lyriqAudioPlayer.duration));
 
-      // The click position is relative to the playhead's fixed position (center of the view)
-      const clickXRelativeToCenter = clientX - rect.left - rect.width / 2;
-      const currentScrollX = waveformScroll;
-
-      const newAbsoluteX = currentScrollX + rect.width/2 + clickXRelativeToCenter;
-      
-      const newTime = newAbsoluteX / this.PIXELS_PER_SECOND;
-      const clampedTime = Math.max(0, Math.min(newTime, this.lyriqAudioPlayer.duration));
-
-      this.lyriqAudioPlayer.currentTime = clampedTime;
-      this.updatePlayheadPosition(clampedTime);
+    this.updatePlayheadPosition(clampedTime);
   }
 
   private renderBeatWaveform(): void {
@@ -2431,13 +2419,33 @@ class VoiceNotesApp {
   
   private updatePlayheadPosition(time: number): void {
       if (!this.beatAudioBuffer) return;
-
-      const newScrollLeft = time * this.PIXELS_PER_SECOND;
+  
+      const duration = this.lyriqAudioPlayer.duration;
+      let clampedTime = time;
+  
+      // Clamp time to valid range if duration is available
+      if (duration && !isNaN(duration)) {
+          clampedTime = Math.max(0, Math.min(time, duration));
+      } else {
+          clampedTime = Math.max(0, time);
+      }
+      
+      // Set time for both audio players. This is now the single source of truth.
+      // Use a small epsilon to prevent floating point issues from causing seeks during playback.
+      const epsilon = 0.01;
+      if (Math.abs(this.lyriqAudioPlayer.currentTime - clampedTime) > epsilon) {
+        this.lyriqAudioPlayer.currentTime = clampedTime;
+      }
+      if (this.lyriqVocalAudioPlayer.src && Math.abs(this.lyriqVocalAudioPlayer.currentTime - clampedTime) > epsilon) {
+          this.lyriqVocalAudioPlayer.currentTime = clampedTime;
+      }
+  
+      const newScrollLeft = clampedTime * this.PIXELS_PER_SECOND;
       this.lyriqWaveforms.scrollLeft = Math.max(0, newScrollLeft);
-
-      const duration = this.lyriqAudioPlayer.duration || 0;
-      this.lyriqExpandedTime.textContent = this.formatTime(time * 1000);
-      this.lyriqModalTime.textContent = `${this.formatTime(time * 1000)} / ${this.formatTime(duration * 1000)}`;
+  
+      const displayDuration = duration && !isNaN(duration) ? duration : 0;
+      this.lyriqExpandedTime.textContent = this.formatTime(clampedTime * 1000);
+      this.lyriqModalTime.textContent = `${this.formatTime(clampedTime * 1000)} / ${this.formatTime(displayDuration * 1000)}`;
   }
 
 

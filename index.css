@@ -1363,8 +1363,8 @@ body.recording-modal-active .editor-fab-container {
   align-items: center;
   width: 100%;
   padding: 8px 24px;
-  flex-shrink: 0;
-  height: calc(var(--lyriq-modal-peeking-height) - 21px);
+  flex: 1;
+  min-height: 0;
   gap: 16px;
   transition: opacity var(--transition-slow);
 }
@@ -1381,7 +1381,7 @@ body.recording-modal-active .editor-fab-container {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
+  gap: 4px;
 }
 #lyriqModalPeekTitle {
   font-size: 15px;
@@ -1390,12 +1390,6 @@ body.recording-modal-active .editor-fab-container {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.2;
-}
-#lyriqModalPeekSubtitle {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  display: block;
   line-height: 1.2;
 }
 .lyriq-time-display {
@@ -1461,7 +1455,7 @@ body.recording-modal-active .editor-fab-container {
 }
 
 .lyriq-expanded-header {
-  padding: 0 0 16px;
+  padding: 0 0 4px;
   font-family: var(--font-mono);
   font-size: 16px;
   color: var(--color-text-secondary);
@@ -1469,11 +1463,15 @@ body.recording-modal-active .editor-fab-container {
 }
 .lyriq-expanded-body {
   width: 100%;
-  display: flex;
-  gap: 24px;
-  min-height: 0;
+  position: relative;
+  height: 80px;
 }
 .lyriq-expanded-track-list {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1500,12 +1498,14 @@ body.recording-modal-active .editor-fab-container {
 }
 
 .lyriq-timeline-container {
-  flex: 1;
-  position: relative;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 80px;
 }
 .lyriq-waveforms {
   position: absolute;
@@ -1549,7 +1549,7 @@ body.recording-modal-active .editor-fab-container {
   justify-content: center;
   gap: 32px;
   width: 100%;
-  padding: 12px 0 0;
+  padding: 8px 0 0;
   flex-shrink: 0;
 }
 
