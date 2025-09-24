@@ -183,7 +183,11 @@ class VoiceNotesApp {
 
   private beatAudioBuffer: AudioBuffer | null = null;
   private vocalAudioBuffer: AudioBuffer | null = null;
+  
+  // Scrubbing State
   private isScrubbing = false;
+  private scrubStartX = 0;
+  private scrubStartScrollLeft = 0;
 
   private lyriqIsPlaying = false;
   private lyriqCurrentLineIndex = -1;
@@ -1751,9 +1755,9 @@ class VoiceNotesApp {
   }
 
   private async generateLyricTimestamps(note: Note, audioBlob: Blob): Promise<void> {
-    const lyricsText = note.editorFormat === 'open' ? note.polishedNote : this.flattenSections(note.sections);
+    const lyricsText = this.flattenSections(note.sections);
     if (!lyricsText.trim()) {
-        console.log("No lyrics to sync.");
+        console.log("No lyrics in the original note to sync.");
         return;
     }
 
@@ -1845,27 +1849,9 @@ class VoiceNotesApp {
       this.lyriqSongSubtitle.textContent = new Date(note.timestamp).toLocaleDateString();
       this.lyriqModalPeekTitle.textContent = note.title;
 
-      if (note.syncedLyrics && note.syncedLyrics.length > 0) {
-          this.lyricsData = note.syncedLyrics;
-      } else {
-          const lyricsText = note.editorFormat === 'open' ? note.polishedNote : this.flattenSections(note.sections);
-
-          if (!lyricsText.trim()) {
-            this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">This note is empty. Add some lyrics or record audio to get started.</p>';
-            this.lyricsData = [];
-            return;
-          }
-          
-          // A simple placeholder for lyrics display. A real implementation would parse LRC or similar.
-          this.lyricsData = lyricsText.split('\n').map((line, index) => ({
-            time: index * 5, // Dummy timing
-            line: line.trim()
-          })).filter(l => l.line);
-      }
-
-      this.lyricsContainer.innerHTML = this.lyricsData
-        .map(l => `<p class="lyriq-line">${l.line}</p>`)
-        .join('');
+      // Always start with a blank slate per user request.
+      this.lyricsData = [];
+      this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Record a vocal performance to generate lyrics.</p>';
   }
 
   private async handleLyriqFileUpload(event: Event): Promise<void> {
@@ -2292,36 +2278,37 @@ class VoiceNotesApp {
     this.isScrubbing = true;
     this.lyriqWaveforms.classList.add('is-scrubbing');
     if (this.lyriqIsPlaying) this.toggleLyriqPlayback(); // Pause while scrubbing
-    this.updateScrubPosition(e);
+    
+    this.scrubStartX = this.getPointerX(e);
+    this.scrubStartScrollLeft = this.lyriqWaveforms.scrollLeft;
+
+    // Prevent momentum scrolling on touch devices
+    this.lyriqWaveforms.style.overflowX = 'hidden';
   }
 
   private handleScrubMove(e: MouseEvent | TouchEvent): void {
-      if (!this.isScrubbing) return;
-      e.preventDefault();
-      this.updateScrubPosition(e);
+    if (!this.isScrubbing) return;
+    e.preventDefault();
+
+    const currentX = this.getPointerX(e);
+    const deltaX = currentX - this.scrubStartX;
+    const newScrollLeft = this.scrubStartScrollLeft - deltaX;
+
+    const maxScroll = this.lyriqWaveforms.scrollWidth - this.lyriqWaveforms.clientWidth;
+    const clampedScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScroll));
+
+    this.lyriqWaveforms.scrollLeft = clampedScrollLeft;
+
+    const newTime = clampedScrollLeft / this.PIXELS_PER_SECOND;
+
+    this.updatePlayheadPosition(newTime, false);
   }
   
   private handleScrubEnd(): void {
-      if (!this.isScrubbing) return;
-      this.isScrubbing = false;
-      this.lyriqWaveforms.classList.remove('is-scrubbing');
-  }
-
-  private updateScrubPosition(e: MouseEvent | TouchEvent): void {
-    if (!this.beatAudioBuffer || !this.lyriqAudioPlayer.duration) return;
-
-    const rect = this.lyriqWaveforms.getBoundingClientRect();
-    const clientX = e.type.startsWith('touch') ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
-    
-    const absoluteX = this.lyriqWaveforms.scrollLeft + (clientX - rect.left);
-    const canvasStartOffset = rect.width / 2;
-    const positionOnCanvas = absoluteX - canvasStartOffset;
-    const newTime = positionOnCanvas / this.PIXELS_PER_SECOND;
-    
-    // Clamp the time to be within the audio duration.
-    const clampedTime = Math.max(0, Math.min(newTime, this.lyriqAudioPlayer.duration));
-
-    this.updatePlayheadPosition(clampedTime);
+    if (!this.isScrubbing) return;
+    this.isScrubbing = false;
+    this.lyriqWaveforms.classList.remove('is-scrubbing');
+    this.lyriqWaveforms.style.overflowX = 'scroll';
   }
 
   private renderBeatWaveform(): void {
@@ -2417,7 +2404,7 @@ class VoiceNotesApp {
       }
   }
   
-  private updatePlayheadPosition(time: number): void {
+  private updatePlayheadPosition(time: number, updateScroll = true): void {
       if (!this.beatAudioBuffer) return;
   
       const duration = this.lyriqAudioPlayer.duration;
@@ -2440,8 +2427,10 @@ class VoiceNotesApp {
           this.lyriqVocalAudioPlayer.currentTime = clampedTime;
       }
   
-      const newScrollLeft = clampedTime * this.PIXELS_PER_SECOND;
-      this.lyriqWaveforms.scrollLeft = Math.max(0, newScrollLeft);
+      if (updateScroll) {
+        const newScrollLeft = clampedTime * this.PIXELS_PER_SECOND;
+        this.lyriqWaveforms.scrollLeft = Math.max(0, newScrollLeft);
+      }
   
       const displayDuration = duration && !isNaN(duration) ? duration : 0;
       this.lyriqExpandedTime.textContent = this.formatTime(clampedTime * 1000);
