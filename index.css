@@ -109,6 +109,7 @@
   --recording-peek-height: 72px;
   --sidebar-width: 280px;
   --lyriq-modal-peeking-height: 96px;
+  --lyriq-modal-expanded-height: 300px;
 }
 
 body.light-mode {
@@ -1340,7 +1341,7 @@ body.recording-modal-active .editor-fab-container {
 }
 .lyriq-controls-modal.visible {
   transform: translateY(0);
-  height: 85vh;
+  height: var(--lyriq-modal-expanded-height);
 }
 .lyriq-modal-handle-container {
   padding: 8px 0;
@@ -1439,6 +1440,7 @@ body.recording-modal-active .editor-fab-container {
 .lyriq-modal-expanded-content {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-items: center;
   width: 100%;
   flex: 1;
@@ -1459,14 +1461,13 @@ body.recording-modal-active .editor-fab-container {
 }
 
 .lyriq-expanded-header {
-  padding: 16px 0;
+  padding: 0 0 16px;
   font-family: var(--font-mono);
   font-size: 16px;
   color: var(--color-text-secondary);
   flex-shrink: 0;
 }
 .lyriq-expanded-body {
-  flex: 1;
   width: 100%;
   display: flex;
   gap: 24px;
@@ -1504,6 +1505,7 @@ body.recording-modal-active .editor-fab-container {
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 80px;
 }
 .lyriq-waveforms {
   position: absolute;
@@ -1726,7 +1728,7 @@ body.light-mode ::-webkit-scrollbar-thumb:hover {
   .header-right-cluster #themeToggleButton, .header-right-cluster #formatToggleButton { display: flex; } /* Keep these */
   
   .lyriq-controls-modal.visible {
-    height: 70vh;
+    height: var(--lyriq-modal-expanded-height);
   }
 }
 
@@ -1750,6 +1752,6 @@ body.light-mode ::-webkit-scrollbar-thumb:hover {
   }
   .lyriq-lyrics { padding-bottom: calc(var(--lyriq-modal-peeking-height) + 24px); }
   .lyriq-controls-modal.visible {
-      height: 75vh;
+      height: var(--lyriq-modal-expanded-height);
   }
 }
