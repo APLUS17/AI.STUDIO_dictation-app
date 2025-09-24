@@ -1440,7 +1440,7 @@ body.recording-modal-active .editor-fab-container {
   flex: 1;
   min-height: 0;
   transition: opacity var(--transition-slow);
-  padding: 0 24px 24px;
+  padding: 0 24px 16px;
   position: absolute;
   top: 21px; /* handle height */
   bottom: 0;
@@ -1465,16 +1465,16 @@ body.recording-modal-active .editor-fab-container {
   width: 100%;
   position: relative;
   height: 80px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .lyriq-expanded-track-list {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
   z-index: 10;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
 }
 .lyriq-track-select-btn {
   background: transparent;
@@ -1501,16 +1501,15 @@ body.recording-modal-active .editor-fab-container {
 }
 
 .lyriq-timeline-container {
-  position: absolute;
-  left: 60px;
-  right: 24px;
-  top: 0;
-  bottom: 0;
+  flex-grow: 1;
+  position: relative;
+  height: 100%;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
-  mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
 }
 .lyriq-waveforms {
   position: absolute;

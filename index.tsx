@@ -2292,7 +2292,9 @@ class VoiceNotesApp {
 
     const currentX = this.getPointerX(e);
     const deltaX = currentX - this.scrubStartX;
-    const newScrollLeft = this.scrubStartScrollLeft - deltaX;
+    // Invert the scroll direction for a more natural "drag-to-seek" feel.
+    // Dragging right should fast-forward (increase scrollLeft).
+    const newScrollLeft = this.scrubStartScrollLeft + deltaX;
 
     const maxScroll = this.lyriqWaveforms.scrollWidth - this.lyriqWaveforms.clientWidth;
     const clampedScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScroll));
