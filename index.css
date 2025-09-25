@@ -1246,16 +1246,16 @@ body.recording-modal-active .editor-fab-container {
 /* Lyriq Initial Controls Bar */
 .lyriq-initial-controls {
   position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 0;
+  left: 0;
+  right: 0;
   z-index: 100;
   display: flex;
   align-items: center;
   background-color: #2c2c2e;
-  border-radius: 16px;
-  padding: 8px;
-  gap: 8px;
+  border-radius: 24px 24px 0 0;
+  padding: 16px 24px;
+  gap: 16px;
   box-shadow: var(--shadow-md);
   transition: opacity var(--transition-normal), transform var(--transition-normal);
   opacity: 0;
@@ -1268,15 +1268,17 @@ body.recording-modal-active .editor-fab-container {
 .lyriq-player-view:not(.empty-state) .lyriq-initial-controls {
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, 100px);
+  transform: translateY(100px);
 }
 
 .lyriq-initial-btn {
+  flex: 1;
   background: transparent;
   border: none;
   color: var(--color-text);
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   padding: 10px 16px;
   font-size: 16px;
