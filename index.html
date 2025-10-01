@@ -94,48 +94,47 @@
           </div>
         </div>
         
-        <div class="notes-list-view">
-          <div class="notes-list-header">
-            <!-- Back button removed to match design -->
-            <div class="header-title-container">
-                <h1>Ideas</h1>
-                <!-- Note count removed to match design -->
-            </div>
-            <div class="profile-icon">
-                <i class="fas fa-user"></i>
-            </div>
-          </div>
-          <div class="ideas-tabs">
-            <button class="idea-tab-btn active" data-tab="songs" title="Songs">
-                <i class="fas fa-music"></i>
-                <span>Songs</span>
-            </button>
-            <button class="idea-tab-btn" data-tab="verses" title="Verses">
-                <i class="fas fa-quote-right"></i>
-                <span>Verses</span>
-            </button>
-            <button class="idea-tab-btn" data-tab="takes" title="Takes">
-                <i class="fas fa-microphone-alt"></i>
-                <span>Takes</span>
-            </button>
-          </div>
-          <div class="notes-list-content">
-              <!-- Notes will be rendered here by TS -->
-          </div>
-        </div>
-
-        <div class="list-view-fab-container">
-            <button class="list-view-new-note-fab" title="New Note">
-                <i class="fas fa-plus"></i>
-            </button>
-        </div>
-
         <div class="editor-fab-container">
           <button id="startRecordingFab" class="editor-fab" title="Start Recording">
               <i class="fas fa-microphone"></i>
           </button>
         </div>
+      </div>
+      
+      <div class="notes-list-view">
+        <div class="notes-list-header">
+          <!-- Back button removed to match design -->
+          <div class="header-title-container">
+              <h1>Ideas</h1>
+              <!-- Note count removed to match design -->
+          </div>
+          <div class="profile-icon">
+              <i class="fas fa-user"></i>
+          </div>
+        </div>
+        <div class="ideas-tabs">
+          <button class="idea-tab-btn active" data-tab="songs" title="Songs">
+              <i class="fas fa-music"></i>
+              <span>Songs</span>
+          </button>
+          <button class="idea-tab-btn" data-tab="verses" title="Verses">
+              <i class="fas fa-quote-right"></i>
+              <span>Verses</span>
+          </button>
+          <button class="idea-tab-btn" data-tab="takes" title="Takes">
+              <i class="fas fa-microphone-alt"></i>
+              <span>Takes</span>
+          </button>
+        </div>
+        <div class="notes-list-content">
+            <!-- Notes will be rendered here by TS -->
+        </div>
+      </div>
 
+      <div class="list-view-fab-container">
+          <button class="list-view-new-note-fab" title="New Note">
+              <i class="fas fa-plus"></i>
+          </button>
       </div>
       
       <div class="lyriq-player-view">
@@ -144,6 +143,9 @@
                 <i class="fas fa-bars"></i>
               </button>
               <div class="lyriq-header-actions">
+                  <button class="lyriq-action-btn active" id="lyriqToggleScrollBtn" title="Toggle Auto-Scroll">
+                      <i class="fas fa-scroll"></i>
+                  </button>
                   <button class="lyriq-action-btn" title="More Options">
                       <i class="fas fa-ellipsis"></i>
                   </button>
@@ -152,7 +154,6 @@
       
           <div class="lyriq-song-info">
               <h1 id="lyriqSongTitle">Untitled Note</h1>
-              <h2 id="lyriqSongSubtitle"></h2>
           </div>
       
           <div id="lyricsContainer" class="lyriq-lyrics">
@@ -216,16 +217,35 @@
                               <canvas id="beatWaveformCanvas"></canvas>
                               <canvas id="vocalWaveformCanvas"></canvas>
                           </div>
+                          <div class="lyriq-volume-mixer" id="lyriqVolumeMixer">
+                            <div class="volume-track" data-track="beat">
+                              <div class="volume-label">
+                                <i class="fas fa-music"></i>
+                                <span class="volume-percentage" id="beatVolumePercentage">100%</span>
+                              </div>
+                              <div class="volume-slider-container" id="beatVolumeSliderContainer">
+                                <div class="volume-slider-fill" id="beatVolumeFill"></div>
+                              </div>
+                            </div>
+                            <div class="volume-track" data-track="vocal">
+                              <div class="volume-label">
+                                <i class="fas fa-microphone"></i>
+                                <span class="volume-percentage" id="vocalVolumePercentage">100%</span>
+                              </div>
+                              <div class="volume-slider-container" id="vocalVolumeSliderContainer">
+                                <div class="volume-slider-fill" id="vocalVolumeFill"></div>
+                              </div>
+                            </div>
+                          </div>
                       </div>
                   </div>
                   <div class="lyriq-expanded-controls">
-                      <button id="lyriqExpandedVolumeBtn" class="lyriq-control-btn-simple" title="Mute/Unmute"><i class="fas fa-volume-up"></i></button>
+                      <button id="lyriqExpandedVolumeBtn" class="lyriq-control-btn-simple" title="Adjust Volume"><i class="fas fa-volume-up"></i></button>
                       <button id="lyriqExpandedRecordBtn" class="lyriq-record-pill-btn" title="Record">
                           <div class="record-icon-inner"></div>
                       </button>
                       <button id="lyriqExpandedPlayBtn" class="lyriq-control-btn-simple" title="Play/Pause"><i class="fas fa-play"></i></button>
                   </div>
-                  <input type="range" id="lyriqVolumeSlider" class="volume-slider visually-hidden" min="0" max="1" step="0.01" value="1">
               </div>
 
           </div>
@@ -250,13 +270,18 @@
       <div id="liveRecordingTimerDisplay" class="live-recording-timer">
         00:00.00
       </div>
-      <canvas id="liveWaveformCanvas"></canvas>
+      <div class="waveform-container" id="liveWaveformContainer">
+        <canvas id="liveWaveformCanvas"></canvas>
+        <div id="previewPlayhead" class="preview-playhead"></div>
+      </div>
       <div id="recordingStatus" class="status-indicator">
       </div>
       <div class="recording-controls">
-        <button id="recordButton" class="record-button" title="Start/Pause/Redo Recording">
+        <button id="recordButton" class="record-button" title="Start/Pause/Playback Recording">
           <i class="fas fa-microphone"></i>
           <i class="fas fa-stop" style="display: none;"></i>
+          <i class="fas fa-play" style="display: none;"></i>
+          <i class="fas fa-pause" style="display: none;"></i>
           <span id="recordButtonText" class="record-button-text"></span>
         </button>
       </div>
