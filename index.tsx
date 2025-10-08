@@ -1,3 +1,4 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -19,6 +20,12 @@ interface AudioTake {
   timestamp: number;
 }
 
+interface TimedWord {
+    word: string;
+    start: number; // in seconds
+    end: number;   // in seconds
+}
+
 interface NoteSection {
   type: string;
   content: string;
@@ -34,7 +41,7 @@ interface Note {
   editorFormat: 'structured' | 'open';
   timestamp: number;
   projectId: string | null;
-  syncedLyrics: { time: number; line: string }[] | null;
+  syncedWords: TimedWord[] | null;
 }
 
 // State snapshot for undo/redo history
@@ -219,8 +226,7 @@ class VoiceNotesApp {
 
   private lyriqIsPlaying = false;
   private lyriqAutoScrollEnabled = true;
-  private lyriqCurrentLineIndex = -1;
-  private lyricsData: { time: number; line: string }[] = [];
+  private lyriqCurrentWordIndex = -1;
   private activeMixerTrack: MixerTrack = 'beat';
   private vocalBlobForMaster: Blob | null = null;
   
@@ -504,7 +510,6 @@ class VoiceNotesApp {
     this.lyriqExpandedVolumeBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleVolumeView(); });
     
     this.lyriqAudioPlayer.addEventListener('loadedmetadata', () => this.handleLyriqMetadataLoaded());
-    this.lyriqAudioPlayer.addEventListener('timeupdate', () => this.syncLyrics());
     this.lyriqAudioPlayer.addEventListener('ended', () => this.handleLyriqEnded());
     
     // Lyriq Mixer Controls
@@ -680,8 +685,12 @@ class VoiceNotesApp {
             } else {
                note.sections = []; // Backwards compatibility
             }
-            if (typeof note.syncedLyrics === 'undefined') {
-                note.syncedLyrics = null;
+            // Backwards compatibility for new syncedWords property
+            if (typeof (note as any).syncedLyrics !== 'undefined') {
+                delete (note as any).syncedLyrics;
+            }
+            if (typeof note.syncedWords === 'undefined') {
+                note.syncedWords = null;
             }
             this.notes.set(id, note);
         });
@@ -726,7 +735,7 @@ class VoiceNotesApp {
       editorFormat: 'structured',
       timestamp: Date.now(),
       projectId: this.currentFilter.type === 'project' ? this.currentFilter.id : null,
-      syncedLyrics: null,
+      syncedWords: null,
     };
     this.notes.set(newNote.id, newNote);
     
@@ -1621,104 +1630,70 @@ Follow these rules:
   }
 
   private async processRecordingForLyriq(audioBlob: Blob): Promise<void> {
-      if (!this.currentNoteId) return;
-  
-      // Show processing indicator in Lyriq player.
-      this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Transcribing your recording...</p>';
-      this.isProcessing = true;
-      this.updateLyriqControlsState(); // Disable buttons while processing
-  
-      try {
-          const base64Audio = await this.blobToBase64(audioBlob);
-          const audioPart = {
-              inlineData: {
-                  mimeType: audioBlob.type,
-                  data: base64Audio,
-              },
-          };
-  
-          const prompt = `You are an expert musical assistant for a songwriter. I'm providing an audio voice memo.
-  Your task is to transcribe the audio and structure it into a clear, organized format for songwriting.
-  
-  Follow these rules:
-  1. First, transcribe the audio, which may contain singing, humming, speech, and musical instruments.
-  2. Next, analyze the transcription to identify distinct song sections (e.g., Verse, Chorus, Bridge, Intro, etc.). If the structure isn't clear, use logical groupings like "Idea 1", "Idea 2".
-  3. Clean up the content: remove filler words (um, uh), correct obvious transcription errors, and format lyrics cleanly. Preserve the core creative ideas from the audio. Do NOT add any new lyrics or ideas.
-  4. Format the final output as a JSON object. This object must be an array of "NoteSection" objects.
-  5. Each NoteSection object must have two properties: "type" (a string, e.g., "Verse") and "content" (a string with the lyrics/notes for that section).
-  6. If the audio contains very little content, you can create a single section (e.g., "Verse" or "Lyric Idea").`;
-          
-          const response = await this.genAI.models.generateContent({
-              model: MODEL_NAME,
-              contents: {
-                  parts: [ audioPart, { text: prompt } ]
-              },
-              config: {
-                  responseMimeType: "application/json",
-                  responseSchema: {
-                      type: Type.ARRAY,
-                      items: {
-                          type: Type.OBJECT,
-                          properties: {
-                              type: { type: Type.STRING },
-                              content: { type: Type.STRING }
-                          },
-                          required: ["type", "content"]
-                      }
-                  }
-              }
-          });
-  
-          const jsonString = response.text;
-          let structuredResult;
-          const note = this.notes.get(this.currentNoteId)!;
-  
-          try {
-              structuredResult = JSON.parse(jsonString).map((section: any) => ({...section, takes: []}));
-          } catch (e) {
-              console.error("Failed to parse AI JSON response:", e);
-              console.error("Received text:", jsonString);
-              this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Could not parse transcription. Showing raw text.</p>';
-              // Fallback to storing raw text
-              note.polishedNote += (note.polishedNote ? '\n' : '') + jsonString; 
-              note.sections.push({ type: 'New Idea', content: jsonString, takes: [] });
-              this.saveDataToStorage();
-              this.saveNoteState();
-              setTimeout(() => this.loadNoteIntoLyriqPlayer(), 2000);
-              return;
-          }
-  
-          const isNoteEmpty = !note.sections || note.sections.length === 0 || 
-                              (note.sections.length === 1 && note.sections[0].content.trim() === '');
-          
-          this.updateCurrentNoteContent();
-          this.saveNoteState();
-  
-          if (isNoteEmpty) {
-              note.sections = structuredResult;
-          } else {
-              note.sections.push(...structuredResult);
-          }
-  
-          note.polishedNote = this.flattenSections(note.sections);
-          note.timestamp = Date.now();
-          note.syncedLyrics = null; // New lyrics mean old sync data is invalid.
-  
-          this.saveDataToStorage();
-          this.saveNoteState();
-          
-          this.loadNoteIntoLyriqPlayer();
-          this.triggerHapticFeedback(20);
-  
-      } catch (error) {
-          console.error('Error during Lyriq transcription:', error);
-          this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Error processing audio. Please try again.</p>';
-          setTimeout(() => this.loadNoteIntoLyriqPlayer(), 2000); // Revert to previous state
-          this.triggerHapticFeedback([40, 30, 40]);
-      } finally {
-          this.isProcessing = false;
-          this.updateLyriqControlsState(); // Re-enable buttons
-      }
+    if (!this.currentNoteId) return;
+
+    this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Syncing lyrics...</p>';
+    this.isProcessing = true;
+    this.updateLyriqControlsState();
+
+    try {
+        const base64Audio = await this.blobToBase64(audioBlob);
+        const audioPart = {
+            inlineData: {
+                mimeType: audioBlob.type,
+                data: base64Audio,
+            },
+        };
+
+        const prompt = `You are an expert Speech-to-Text processor. Analyze the provided audio and transcribe all spoken vocals. Instead of returning raw text, format the entire output as a single, clean JSON array. Each item in the array must represent a word and contain three keys: "word" (the transcribed text), "start" (the start time in seconds, float), and "end" (the end time in seconds, float). Do not include any additional commentary or text outside of the final JSON array.`;
+        
+        const response = await this.genAI.models.generateContent({
+            model: MODEL_NAME,
+            contents: { parts: [audioPart, { text: prompt }] },
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            word: { type: Type.STRING },
+                            start: { type: Type.NUMBER },
+                            end: { type: Type.NUMBER }
+                        },
+                        required: ["word", "start", "end"]
+                    }
+                }
+            }
+        });
+
+        const jsonString = response.text;
+        const timedWords: TimedWord[] = JSON.parse(jsonString);
+        
+        const note = this.notes.get(this.currentNoteId)!;
+        note.syncedWords = timedWords;
+        
+        // Also update the note sections with the new transcription for the editor view
+        const fullText = timedWords.map(w => w.word).join(' ');
+        note.sections = [{ type: 'Verse', content: fullText, takes: [] }];
+        note.polishedNote = fullText;
+        note.timestamp = Date.now();
+        
+        this.saveDataToStorage();
+        this.saveNoteState();
+        
+        this.loadNoteIntoLyriqPlayer();
+        this.triggerHapticFeedback(20);
+
+    } catch (error) {
+        console.error("Error syncing lyrics:", error);
+        this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Could not sync lyrics. Please try again.</p>';
+        setTimeout(() => this.loadNoteIntoLyriqPlayer(), 2000); // Revert to previous state
+        this.triggerHapticFeedback([40, 30, 40]);
+    } finally {
+        this.isProcessing = false;
+        this.updateLyriqControlsState();
+    }
   }
   
   private updateRecordingStateUI(): void {
@@ -2216,82 +2191,6 @@ Follow these rules:
     }
   }
 
-  private async generateLyricTimestamps(note: Note, audioBlob: Blob): Promise<void> {
-    const lyricsText = this.flattenSections(note.sections);
-    if (!lyricsText.trim()) {
-        console.log("No lyrics in the original note to sync.");
-        return;
-    }
-
-    this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Syncing lyrics...</p>';
-
-    try {
-        const base64Audio = await this.blobToBase64(audioBlob);
-        const audioPart = {
-            inlineData: {
-                mimeType: audioBlob.type,
-                data: base64Audio,
-            },
-        };
-
-        const response = await this.genAI.models.generateContent({
-            model: MODEL_NAME,
-            contents: {
-                parts: [
-                    audioPart,
-                    { text: `
-                        You are a precise audio-to-text alignment tool.
-                        Analyze the provided audio of a vocal performance and the full lyrics text.
-                        Your task is to generate a JSON array of objects, where each object represents a line of the lyrics.
-                        Each object must contain two properties:
-                        1. "time": The exact start time of the lyric line in the audio, in seconds (e.g., 1.25).
-                        2. "line": The text of the lyric line.
-
-                        Ensure that every line from the provided lyrics is present in your output, with its corresponding timestamp.
-                        The order of lines in the JSON array must match the order in the original lyrics.
-
-                        FULL LYRICS:
-                        ---
-                        ${lyricsText}
-                        ---
-                    `},
-                ]
-            },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            time: { type: Type.NUMBER, description: "Start time in seconds" },
-                            line: { type: Type.STRING, description: "The lyric line" }
-                        },
-                        required: ["time", "line"]
-                    }
-                }
-            }
-        });
-
-        const jsonString = response.text;
-        const syncedLyrics = JSON.parse(jsonString);
-
-        note.syncedLyrics = syncedLyrics;
-        this.saveDataToStorage();
-        this.loadNoteIntoLyriqPlayer(); // Refresh the display with new data
-        this.triggerHapticFeedback(20); // Success feedback
-
-    } catch (error) {
-        console.error("Error syncing lyrics:", error);
-        this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Could not sync lyrics. Showing plain text instead.</p>';
-        note.syncedLyrics = null;
-        this.saveDataToStorage();
-        // Add a small delay so the user can see the message, then load the non-synced lyrics
-        setTimeout(() => this.loadNoteIntoLyriqPlayer(), 2000);
-        this.triggerHapticFeedback([40, 30, 40]); // Error feedback
-    }
-  }
-
   private loadNoteIntoLyriqPlayer(): void {
       if (!this.currentNoteId) {
           // If no note is active, find the most recent one
@@ -2303,7 +2202,6 @@ Follow these rules:
               this.lyriqSongTitle.textContent = 'No Note Selected';
               this.lyriqModalPeekTitle.textContent = 'No Note Selected';
               this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Create or select a note to see lyrics here.</p>';
-              this.lyricsData = [];
               return;
           }
       }
@@ -2315,17 +2213,9 @@ Follow these rules:
       this.lyriqModalPeekTitle.textContent = note.title;
       this.lyricsContainer.innerHTML = ''; // Clear existing
 
-      if (note.syncedLyrics && note.syncedLyrics.length > 0) {
-          this.lyricsData = note.syncedLyrics;
-          this.lyricsData.forEach(item => {
-              const lineEl = document.createElement('p');
-              lineEl.className = 'lyriq-line';
-              // Use innerText to prevent any potential HTML injection from the line content
-              lineEl.innerText = item.line.trim() || '\u00A0';
-              this.lyricsContainer.appendChild(lineEl);
-          });
+      if (note.syncedWords && note.syncedWords.length > 0) {
+          this.renderSyncedWords(note.syncedWords);
       } else {
-          this.lyricsData = [];
           const lyricsText = this.flattenSections(note.sections);
           if (lyricsText.trim()) {
               lyricsText.split('\n').forEach(line => {
@@ -2340,7 +2230,20 @@ Follow these rules:
               this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">This note has no lyrics. Try recording some vocals.</p>';
           }
       }
-      this.lyriqCurrentLineIndex = -1; // Reset line tracking
+      this.lyriqCurrentWordIndex = -1; // Reset word tracking
+  }
+
+  private renderSyncedWords(words: TimedWord[]): void {
+      this.lyricsContainer.innerHTML = '';
+      const lineEl = document.createElement('p');
+      lineEl.className = 'lyriq-line';
+      words.forEach(item => {
+          const wordEl = document.createElement('span');
+          wordEl.innerText = item.word;
+          lineEl.appendChild(wordEl);
+          lineEl.appendChild(document.createTextNode(' ')); // Add space
+      });
+      this.lyricsContainer.appendChild(lineEl);
   }
 
   private async handleLyriqFileUpload(event: Event): Promise<void> {
@@ -2412,6 +2315,7 @@ Follow these rules:
           this.lyriqAudioPlayer.pause();
           if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.pause();
           this.stopLyriqAnimation();
+          this.clearWordHighlight();
       } else {
           // Sync vocal track to beat track before playing
           if (this.lyriqVocalAudioPlayer.src) {
@@ -2438,38 +2342,45 @@ Follow these rules:
 
   private handleLyriqMetadataLoaded(): void {
     this.updatePlayheadPosition(this.lyriqAudioPlayer.currentTime);
-    this.syncLyrics();
   }
 
-  private syncLyrics(): void {
-    if (!this.lyriqAudioPlayer.duration) return;
+  private updateHighlightedWord(currentTime: number): void {
+    const note = this.currentNoteId ? this.notes.get(this.currentNoteId) : null;
+    if (!note || !note.syncedWords) return;
 
-    const currentTime = this.lyriqAudioPlayer.currentTime;
+    const words = this.lyricsContainer.querySelectorAll('.lyriq-line span');
+    if (words.length === 0) return;
 
-
-    // Find the current lyric line
-    let currentLine = -1;
-    for (let i = this.lyricsData.length - 1; i >= 0; i--) {
-        if (currentTime >= this.lyricsData[i].time) {
-            currentLine = i;
+    let newHighlightIndex = -1;
+    for (let i = 0; i < note.syncedWords.length; i++) {
+        const wordData = note.syncedWords[i];
+        if (currentTime >= wordData.start && currentTime <= wordData.end) {
+            newHighlightIndex = i;
             break;
         }
     }
-
-    if (currentLine !== this.lyriqCurrentLineIndex) {
-        this.lyriqCurrentLineIndex = currentLine;
-        const lines = this.lyricsContainer.querySelectorAll('.lyriq-line');
-        lines.forEach((line, index) => {
-            if (index === currentLine) {
-                line.classList.add('active');
-                if (this.lyriqAutoScrollEnabled) {
-                  line.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            } else {
-                line.classList.remove('active');
+    
+    if (this.lyriqCurrentWordIndex !== newHighlightIndex) {
+        if (this.lyriqCurrentWordIndex !== -1 && words[this.lyriqCurrentWordIndex]) {
+            words[this.lyriqCurrentWordIndex].classList.remove('highlighted-word');
+        }
+        if (newHighlightIndex !== -1 && words[newHighlightIndex]) {
+            const wordEl = words[newHighlightIndex];
+            wordEl.classList.add('highlighted-word');
+            if (this.lyriqAutoScrollEnabled) {
+                wordEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
-        });
+        }
+        this.lyriqCurrentWordIndex = newHighlightIndex;
     }
+  }
+
+  private clearWordHighlight(): void {
+    const highlighted = this.lyricsContainer.querySelector('.highlighted-word');
+    if (highlighted) {
+        highlighted.classList.remove('highlighted-word');
+    }
+    this.lyriqCurrentWordIndex = -1;
   }
 
   private handleLyriqEnded(): void {
@@ -2838,7 +2749,7 @@ Follow these rules:
     
     // If paused, we also want the lyric highlight to jump to the new spot
     if (!this.lyriqIsPlaying) {
-        this.syncLyrics(); 
+        this.updateHighlightedWord(finalTime); 
     }
   }
 
@@ -2965,6 +2876,7 @@ Follow these rules:
       const animate = () => {
           const currentTime = this.lyriqAudioPlayer.currentTime;
           this.updatePlayheadPosition(currentTime, !this.isScrubbing);
+          this.updateHighlightedWord(currentTime);
           this.lyriqAnimationId = requestAnimationFrame(animate);
       };
       animate();

@@ -1,3 +1,4 @@
+
 @import url(https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css);
 @import url(https://fonts.cdnfonts.com/css/sf-mono);
 
@@ -1435,6 +1436,17 @@ body.light-mode .lyriq-action-btn.active {
   transition: color 0.4s ease, transform 0.4s ease;
   margin-bottom: 16px;
 }
+
+.lyriq-line > span {
+  transition: color 0.2s ease, transform 0.2s ease;
+  display: inline-block; /* Needed for transform */
+}
+
+.lyriq-line .highlighted-word {
+  color: var(--color-text);
+  transform: scale(1.05);
+}
+
 .lyriq-line.active {
   color: var(--color-text);
   transform: scale(1.05);
