@@ -1438,13 +1438,18 @@ body.light-mode .lyriq-action-btn.active {
 }
 
 .lyriq-line > span {
-  transition: color 0.2s ease, transform 0.2s ease;
-  display: inline-block; /* Needed for transform */
+  transition: color 0.15s ease-out, background-color 0.15s ease-out, transform 0.15s ease-out;
+  display: inline-block;
+  padding: 2px 4px;
+  margin: 0 -4px;
+  border-radius: 4px;
 }
 
 .lyriq-line .highlighted-word {
-  color: var(--color-text);
-  transform: scale(1.05);
+  background-color: var(--color-accent);
+  color: var(--color-bg);
+  font-weight: 700;
+  transform: none;
 }
 
 .lyriq-line.active {
