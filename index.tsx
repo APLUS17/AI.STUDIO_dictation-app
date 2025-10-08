@@ -80,7 +80,7 @@ class VoiceNotesApp {
   private projects: Map<string, Project> = new Map();
   private currentNoteId: string | null = null;
   private currentFilter: { type: 'all' | 'project'; id: string | null } = { type: 'all', id: null };
-  private activeIdeaTab: string = 'songs';
+  private activeLibraryTab: string = 'songs';
   private activeView: AppView = 'editor';
   
   // Undo/Redo History
@@ -100,6 +100,7 @@ class VoiceNotesApp {
   private sidebarNewNoteButton: HTMLButtonElement;
   private allNotesButton: HTMLAnchorElement;
   private projectsList: HTMLUListElement;
+  private newProjectButton: HTMLButtonElement;
   private recentNotesList: HTMLUListElement;
   private contextMenu: HTMLDivElement;
   private noteArea: HTMLDivElement;
@@ -115,6 +116,10 @@ class VoiceNotesApp {
   private sendToLyriqButton: HTMLButtonElement;
   private undoButton: HTMLButtonElement;
   private redoButton: HTMLButtonElement;
+  private projectAssignmentContainer: HTMLDivElement;
+  private projectAssignmentButton: HTMLButtonElement;
+  private projectAssignmentText: HTMLSpanElement;
+  private projectAssignmentMenu: HTMLDivElement;
   
   // Card drag/swipe state
   private draggedElement: HTMLElement | null = null;
@@ -138,8 +143,10 @@ class VoiceNotesApp {
   
   // Notes List View elements
   private notesListView: HTMLDivElement;
+  private notesListTitle: HTMLHeadingElement;
+  private notesListBackButton: HTMLButtonElement;
   private notesListContent: HTMLDivElement;
-  private ideasTabsContainer: HTMLDivElement;
+  private libraryTabsContainer: HTMLDivElement;
   private listViewNewNoteFab: HTMLButtonElement;
 
   // Note Audio Playback elements
@@ -244,6 +251,7 @@ class VoiceNotesApp {
     this.sidebarNewNoteButton = document.getElementById('sidebarNewNoteButton') as HTMLButtonElement;
     this.allNotesButton = document.getElementById('allNotesButton') as HTMLAnchorElement;
     this.projectsList = document.getElementById('projectsList') as HTMLUListElement;
+    this.newProjectButton = document.getElementById('newProjectButton') as HTMLButtonElement;
     this.recentNotesList = document.getElementById('recentNotesList') as HTMLUListElement;
     this.contextMenu = document.getElementById('contextMenu') as HTMLDivElement;
     this.noteArea = document.querySelector('.note-area') as HTMLDivElement;
@@ -259,6 +267,10 @@ class VoiceNotesApp {
     this.sendToLyriqButton = document.getElementById('sendToLyriqButton') as HTMLButtonElement;
     this.undoButton = document.getElementById('undoButton') as HTMLButtonElement;
     this.redoButton = document.getElementById('redoButton') as HTMLButtonElement;
+    this.projectAssignmentContainer = document.getElementById('projectAssignmentContainer') as HTMLDivElement;
+    this.projectAssignmentButton = document.getElementById('projectAssignmentButton') as HTMLButtonElement;
+    this.projectAssignmentText = document.getElementById('projectAssignmentText') as HTMLSpanElement;
+    this.projectAssignmentMenu = document.getElementById('projectAssignmentMenu') as HTMLDivElement;
     
     // Recording UI elements
     this.recordingInterface = document.getElementById('recordingInterface') as HTMLDivElement;
@@ -274,8 +286,10 @@ class VoiceNotesApp {
     
     // Notes List View elements
     this.notesListView = document.querySelector('.notes-list-view') as HTMLDivElement;
+    this.notesListTitle = document.getElementById('notesListTitle') as HTMLHeadingElement;
+    this.notesListBackButton = document.getElementById('notesListBackButton') as HTMLButtonElement;
     this.notesListContent = document.querySelector('.notes-list-content') as HTMLDivElement;
-    this.ideasTabsContainer = document.querySelector('.ideas-tabs') as HTMLDivElement;
+    this.libraryTabsContainer = document.querySelector('.library-tabs') as HTMLDivElement;
     this.listViewNewNoteFab = document.querySelector('.list-view-new-note-fab') as HTMLButtonElement;
 
     // Note Audio Playback elements
@@ -370,11 +384,18 @@ class VoiceNotesApp {
         await this.createNewNote();
         this.setActiveView('editor');
     });
+    this.newProjectButton.addEventListener('click', () => { this.triggerHapticFeedback(); this.createProject(); });
     this.allNotesButton.addEventListener('click', (e) => {
         this.triggerHapticFeedback();
         e.preventDefault();
+        this.currentFilter = { type: 'all', id: null };
         this.setActiveView('list');
     });
+    // Context menu for projects
+    this.projectsList.addEventListener('contextmenu', (e) => this.handleProjectContextMenu(e));
+    this.projectsList.addEventListener('touchstart', (e) => this.handleProjectTouchStart(e), { passive: false });
+    this.projectsList.addEventListener('touchend', () => this.handleNoteTouchEnd()); // Can reuse note's touchend
+    this.projectsList.addEventListener('touchmove', () => this.handleNoteTouchEnd());
 
     // Editor controls
     this.editorTitle.addEventListener('blur', () => { this.updateCurrentNoteContent(); this.saveNoteState(); });
@@ -385,6 +406,18 @@ class VoiceNotesApp {
     this.liveRecordingTitle.addEventListener('blur', this.saveLiveRecordingTitle);
     this.openFormatContent.addEventListener('blur', () => { this.updateCurrentNoteContent(); this.saveNoteState(); });
     this.openFormatContent.addEventListener('input', () => this.debouncedSaveState());
+
+    // Project Assignment Dropdown
+    this.projectAssignmentButton.addEventListener('click', () => this.projectAssignmentContainer.classList.toggle('open'));
+    this.projectAssignmentMenu.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        const button = target.closest<HTMLButtonElement>('.project-assignment-menu-item');
+        if (button) {
+            const projectId = button.dataset.projectId || null;
+            this.assignNoteToProject(projectId);
+            this.projectAssignmentContainer.classList.remove('open');
+        }
+    });
 
 
     // Generic handler for all contenteditable placeholders
@@ -421,10 +454,14 @@ class VoiceNotesApp {
 
 
     // Notes list view controls
-    this.ideasTabsContainer.addEventListener('click', (e) => this.handleIdeaTabClick(e as MouseEvent));
+    this.libraryTabsContainer.addEventListener('click', (e) => this.handleLibraryTabClick(e as MouseEvent));
     this.listViewNewNoteFab.addEventListener('click', async () => {
         this.triggerHapticFeedback();
         await this.createNewNote();
+        this.setActiveView('editor');
+    });
+    this.notesListBackButton.addEventListener('click', () => {
+        this.triggerHapticFeedback();
         this.setActiveView('editor');
     });
 
@@ -505,6 +542,9 @@ class VoiceNotesApp {
       if (takesMenu && !takesMenu.contains(e.target as Node) && !(e.target as HTMLElement).closest('.takes-badge')) {
         this.hideTakesMenu();
       }
+      if (!this.projectAssignmentContainer.contains(e.target as Node)) {
+          this.projectAssignmentContainer.classList.remove('open');
+      }
       this.handleOutsideClick(e);
     });
     
@@ -533,12 +573,10 @@ class VoiceNotesApp {
       switch (view) {
           case 'list':
               this.appContainer.classList.add('list-view-active');
-              this.allNotesButton.classList.add('active');
               this.renderNotesList();
               break;
           case 'lyriq':
               this.appContainer.classList.add('lyriq-player-active');
-              this.lyriqPlayerButton.classList.add('active');
               this.loadNoteIntoLyriqPlayer();
               if (this.beatAudioBuffer) {
                   this.lyriqPlayerView.classList.remove('empty-state');
@@ -550,13 +588,13 @@ class VoiceNotesApp {
               break;
           case 'editor':
               // Default state, no extra class needed
-              document.querySelector(`.sidebar-note-item[data-note-id="${this.currentNoteId}"]`)?.classList.add('active');
               break;
       }
       
       if (this.isMobile) {
           this.appContainer.classList.add('sidebar-collapsed');
       }
+      this.renderSidebar();
   }
 
   // --- Theme Management ---
@@ -587,7 +625,8 @@ class VoiceNotesApp {
     sortedNotes.forEach(note => {
         const li = document.createElement('li');
         const button = document.createElement('button');
-        button.className = `sidebar-note-item ${note.id === this.currentNoteId && this.activeView === 'editor' ? 'active' : ''}`;
+        const isActive = note.id === this.currentNoteId && this.activeView === 'editor';
+        button.className = `sidebar-note-item ${isActive ? 'active' : ''}`;
         button.textContent = note.title;
         button.dataset.noteId = note.id;
         button.addEventListener('click', () => {
@@ -605,17 +644,17 @@ class VoiceNotesApp {
     sortedProjects.forEach(project => {
         const li = document.createElement('li');
         const button = document.createElement('button');
-        button.className = 'sidebar-link';
+        const isActive = this.activeView === 'list' && this.currentFilter.type === 'project' && this.currentFilter.id === project.id;
+        button.className = `sidebar-link ${isActive ? 'active' : ''}`;
         button.dataset.projectId = project.id;
         button.innerHTML = `<i class="fas fa-folder"></i><span>${project.name}</span>`;
-        // TODO: Add project filtering logic
-        // button.addEventListener('click', () => this.filterByProject(project.id));
+        button.addEventListener('click', () => this.filterByProject(project.id));
         li.appendChild(button);
         this.projectsList.appendChild(li);
     });
 
     // Update main nav active state
-    this.allNotesButton.classList.toggle('active', this.activeView === 'list');
+    this.allNotesButton.classList.toggle('active', this.activeView === 'list' && this.currentFilter.type === 'all');
     this.lyriqPlayerButton.classList.toggle('active', this.activeView === 'lyriq');
   }
 
@@ -686,7 +725,7 @@ class VoiceNotesApp {
       sections: [{ type: 'Verse', content: '', takes: [] }],
       editorFormat: 'structured',
       timestamp: Date.now(),
-      projectId: null,
+      projectId: this.currentFilter.type === 'project' ? this.currentFilter.id : null,
       syncedLyrics: null,
     };
     this.notes.set(newNote.id, newNote);
@@ -731,6 +770,7 @@ class VoiceNotesApp {
       this.editorTitle.textContent = note.title;
       this.updatePlaceholderVisibility(this.editorTitle);
       this.renderNoteContent(note);
+      this.renderProjectAssignment();
       this.renderSidebar();
       this.updateUndoRedoButtons();
   }
@@ -807,6 +847,7 @@ class VoiceNotesApp {
     if(this.appContainer.classList.contains('list-view-active')) {
       this.renderNotesList();
     }
+    this.triggerHapticFeedback(20); // Success feedback
   }
 
   private renameNote(noteId: string): void {
@@ -828,6 +869,7 @@ class VoiceNotesApp {
         if (this.appContainer.classList.contains('list-view-active')) {
             this.renderNotesList();
         }
+        this.triggerHapticFeedback(20); // Success feedback
     }
   }
   
@@ -1152,12 +1194,21 @@ class VoiceNotesApp {
   // --- Notes List View ---
   private renderNotesList(): void {
       this.notesListContent.innerHTML = '';
-      const notesArray = [...this.notes.values()].sort((a,b) => b.timestamp - a.timestamp);
+      let notesArray = [...this.notes.values()].sort((a,b) => b.timestamp - a.timestamp);
+
+      // Filter notes based on the current filter
+      if (this.currentFilter.type === 'project') {
+          notesArray = notesArray.filter(note => note.projectId === this.currentFilter.id);
+          const project = this.projects.get(this.currentFilter.id!);
+          this.notesListTitle.textContent = project ? project.name : 'Project';
+      } else {
+          this.notesListTitle.textContent = 'Library';
+      }
 
       if (notesArray.length === 0) {
         this.notesListContent.innerHTML = `
           <div class="placeholder-content">
-              <p>No Ideas Yet</p>
+              <p>Your Library is Empty</p>
               <span>Click the button in the bottom right to create a new note.</span>
           </div>`;
         return;
@@ -1166,7 +1217,8 @@ class VoiceNotesApp {
       // For now, just one group. Can expand later with date grouping.
       const group = document.createElement('div');
       group.className = 'notes-group';
-      group.innerHTML = `<h2 class="notes-group-title">All Ideas</h2>`;
+      const groupTitleText = this.currentFilter.type === 'project' ? 'Notes' : 'All Notes';
+      group.innerHTML = `<h2 class="notes-group-title">${groupTitleText}</h2>`;
       const grid = document.createElement('div');
       grid.className = 'notes-grid';
 
@@ -1203,16 +1255,16 @@ class VoiceNotesApp {
       this.notesListContent.appendChild(group);
   }
 
-  private handleIdeaTabClick(e: MouseEvent): void {
+  private handleLibraryTabClick(e: MouseEvent): void {
       const target = e.target as HTMLElement;
       // Fix: The generic parameter on `closest` may not be correctly inferring the type.
       // Casting to `HTMLButtonElement` ensures `dataset` is available.
-      const button = target.closest('.idea-tab-btn') as HTMLButtonElement | null;
+      const button = target.closest('.library-tab-btn') as HTMLButtonElement | null;
       if (button && !button.classList.contains('active')) {
           this.triggerHapticFeedback();
-          this.ideasTabsContainer.querySelector('.active')?.classList.remove('active');
+          this.libraryTabsContainer.querySelector('.active')?.classList.remove('active');
           button.classList.add('active');
-          this.activeIdeaTab = button.dataset.tab!;
+          this.activeLibraryTab = button.dataset.tab!;
           // TODO: Implement filtering based on tab
           this.renderNotesList();
       }
@@ -1415,14 +1467,9 @@ class VoiceNotesApp {
 
               await this.processAndRenderVocalWaveform(audioBlob);
               this.lyriqExpandedVocalBtn.classList.add('has-recording');
-              this.isProcessing = false;
               
-              const note = this.notes.get(this.currentNoteId!);
-              if (note) {
-                  this.generateLyricTimestamps(note, audioBlob);
-              }
-              
-              this.updateLyriqControlsState();
+              await this.processRecordingForLyriq(audioBlob);
+
               return;
           }
 
@@ -1571,6 +1618,107 @@ Follow these rules:
       console.error('Error during transcription/processing:', error);
       this.setFinalStatus('Error processing audio.', true);
     }
+  }
+
+  private async processRecordingForLyriq(audioBlob: Blob): Promise<void> {
+      if (!this.currentNoteId) return;
+  
+      // Show processing indicator in Lyriq player.
+      this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Transcribing your recording...</p>';
+      this.isProcessing = true;
+      this.updateLyriqControlsState(); // Disable buttons while processing
+  
+      try {
+          const base64Audio = await this.blobToBase64(audioBlob);
+          const audioPart = {
+              inlineData: {
+                  mimeType: audioBlob.type,
+                  data: base64Audio,
+              },
+          };
+  
+          const prompt = `You are an expert musical assistant for a songwriter. I'm providing an audio voice memo.
+  Your task is to transcribe the audio and structure it into a clear, organized format for songwriting.
+  
+  Follow these rules:
+  1. First, transcribe the audio, which may contain singing, humming, speech, and musical instruments.
+  2. Next, analyze the transcription to identify distinct song sections (e.g., Verse, Chorus, Bridge, Intro, etc.). If the structure isn't clear, use logical groupings like "Idea 1", "Idea 2".
+  3. Clean up the content: remove filler words (um, uh), correct obvious transcription errors, and format lyrics cleanly. Preserve the core creative ideas from the audio. Do NOT add any new lyrics or ideas.
+  4. Format the final output as a JSON object. This object must be an array of "NoteSection" objects.
+  5. Each NoteSection object must have two properties: "type" (a string, e.g., "Verse") and "content" (a string with the lyrics/notes for that section).
+  6. If the audio contains very little content, you can create a single section (e.g., "Verse" or "Lyric Idea").`;
+          
+          const response = await this.genAI.models.generateContent({
+              model: MODEL_NAME,
+              contents: {
+                  parts: [ audioPart, { text: prompt } ]
+              },
+              config: {
+                  responseMimeType: "application/json",
+                  responseSchema: {
+                      type: Type.ARRAY,
+                      items: {
+                          type: Type.OBJECT,
+                          properties: {
+                              type: { type: Type.STRING },
+                              content: { type: Type.STRING }
+                          },
+                          required: ["type", "content"]
+                      }
+                  }
+              }
+          });
+  
+          const jsonString = response.text;
+          let structuredResult;
+          const note = this.notes.get(this.currentNoteId)!;
+  
+          try {
+              structuredResult = JSON.parse(jsonString).map((section: any) => ({...section, takes: []}));
+          } catch (e) {
+              console.error("Failed to parse AI JSON response:", e);
+              console.error("Received text:", jsonString);
+              this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Could not parse transcription. Showing raw text.</p>';
+              // Fallback to storing raw text
+              note.polishedNote += (note.polishedNote ? '\n' : '') + jsonString; 
+              note.sections.push({ type: 'New Idea', content: jsonString, takes: [] });
+              this.saveDataToStorage();
+              this.saveNoteState();
+              setTimeout(() => this.loadNoteIntoLyriqPlayer(), 2000);
+              return;
+          }
+  
+          const isNoteEmpty = !note.sections || note.sections.length === 0 || 
+                              (note.sections.length === 1 && note.sections[0].content.trim() === '');
+          
+          this.updateCurrentNoteContent();
+          this.saveNoteState();
+  
+          if (isNoteEmpty) {
+              note.sections = structuredResult;
+          } else {
+              note.sections.push(...structuredResult);
+          }
+  
+          note.polishedNote = this.flattenSections(note.sections);
+          note.timestamp = Date.now();
+          note.syncedLyrics = null; // New lyrics mean old sync data is invalid.
+  
+          this.saveDataToStorage();
+          this.saveNoteState();
+          
+          this.loadNoteIntoLyriqPlayer();
+          this.triggerHapticFeedback(20);
+  
+      } catch (error) {
+          console.error('Error during Lyriq transcription:', error);
+          this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Error processing audio. Please try again.</p>';
+          setTimeout(() => this.loadNoteIntoLyriqPlayer(), 2000); // Revert to previous state
+          this.triggerHapticFeedback([40, 30, 40]);
+      } finally {
+          this.isProcessing = false;
+          this.updateLyriqControlsState(); // Re-enable buttons
+      }
   }
   
   private updateRecordingStateUI(): void {
@@ -2011,7 +2159,7 @@ Follow these rules:
   private updateLyriqControlsState(): void {
       const hasAudio = !!(this.beatAudioBuffer || this.vocalAudioBuffer);
       const isRecordingInLyriq = this.isRecording && this.activeView === 'lyriq';
-      const controlsEnabled = hasAudio || isRecordingInLyriq;
+      const controlsEnabled = (hasAudio || isRecordingInLyriq) && !this.isProcessing;
 
       // Peek controls
       this.lyriqModalPeekPlayBtn.disabled = !controlsEnabled;
@@ -2021,6 +2169,7 @@ Follow these rules:
       // Expanded controls
       this.lyriqExpandedPlayBtn.disabled = !controlsEnabled;
       this.lyriqExpandedVolumeBtn.disabled = !controlsEnabled;
+      this.lyriqExpandedRecordBtn.disabled = this.isProcessing;
   }
 
   private async toggleLyriqRecording(): Promise<void> {
@@ -2130,13 +2279,16 @@ Follow these rules:
         note.syncedLyrics = syncedLyrics;
         this.saveDataToStorage();
         this.loadNoteIntoLyriqPlayer(); // Refresh the display with new data
+        this.triggerHapticFeedback(20); // Success feedback
 
     } catch (error) {
         console.error("Error syncing lyrics:", error);
-        this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Could not sync lyrics. Please try recording again.</p>';
-        // Revert to non-synced lyrics if sync fails
+        this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Could not sync lyrics. Showing plain text instead.</p>';
         note.syncedLyrics = null;
         this.saveDataToStorage();
+        // Add a small delay so the user can see the message, then load the non-synced lyrics
+        setTimeout(() => this.loadNoteIntoLyriqPlayer(), 2000);
+        this.triggerHapticFeedback([40, 30, 40]); // Error feedback
     }
   }
 
@@ -2151,6 +2303,7 @@ Follow these rules:
               this.lyriqSongTitle.textContent = 'No Note Selected';
               this.lyriqModalPeekTitle.textContent = 'No Note Selected';
               this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Create or select a note to see lyrics here.</p>';
+              this.lyricsData = [];
               return;
           }
       }
@@ -2160,10 +2313,34 @@ Follow these rules:
 
       this.lyriqSongTitle.textContent = note.title;
       this.lyriqModalPeekTitle.textContent = note.title;
+      this.lyricsContainer.innerHTML = ''; // Clear existing
 
-      // Always start with a blank slate per user request.
-      this.lyricsData = [];
-      this.lyricsContainer.innerHTML = '';
+      if (note.syncedLyrics && note.syncedLyrics.length > 0) {
+          this.lyricsData = note.syncedLyrics;
+          this.lyricsData.forEach(item => {
+              const lineEl = document.createElement('p');
+              lineEl.className = 'lyriq-line';
+              // Use innerText to prevent any potential HTML injection from the line content
+              lineEl.innerText = item.line.trim() || '\u00A0';
+              this.lyricsContainer.appendChild(lineEl);
+          });
+      } else {
+          this.lyricsData = [];
+          const lyricsText = this.flattenSections(note.sections);
+          if (lyricsText.trim()) {
+              lyricsText.split('\n').forEach(line => {
+                  if (line.trim()) { // Don't create elements for empty lines between sections
+                    const lineEl = document.createElement('p');
+                    lineEl.className = 'lyriq-line';
+                    lineEl.innerText = line;
+                    this.lyricsContainer.appendChild(lineEl);
+                  }
+              });
+          } else {
+              this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">This note has no lyrics. Try recording some vocals.</p>';
+          }
+      }
+      this.lyriqCurrentLineIndex = -1; // Reset line tracking
   }
 
   private async handleLyriqFileUpload(event: Event): Promise<void> {
@@ -2211,9 +2388,11 @@ Follow these rules:
         this.updatePlayheadPosition(0);
         this.setLyriqModalState('visible');
         this.updateLyriqControlsState();
+        this.triggerHapticFeedback(20); // Success feedback
 
       } catch (e) {
         console.error("Error processing audio file:", e);
+        this.triggerHapticFeedback([40, 30, 40]); // Error feedback
       }
     }
   }
@@ -2641,6 +2820,28 @@ Follow these rules:
     document.addEventListener('touchend', this.handleScrubEnd);
   }
 
+  private handleWaveformScrub(pixelX: number): void {
+    // Convert the pixel position on the canvas back to a time in seconds
+    const newTime = pixelX / this.PIXELS_PER_SECOND; // Assuming PIXELS_PER_SECOND is your scaling factor
+
+    // Ensure the new time is within the bounds of the audio duration
+    const finalTime = Math.min(Math.max(0, newTime), this.lyriqAudioPlayer.duration || 0);
+
+    // Apply the new time to both players (this fixes the sync during a scrub)
+    this.lyriqAudioPlayer.currentTime = finalTime;
+    if (this.lyriqVocalAudioPlayer.src) {
+        this.lyriqVocalAudioPlayer.currentTime = finalTime;
+    }
+    
+    // Update the visual playhead/marker immediately
+    this.updatePlayheadPosition(finalTime); 
+    
+    // If paused, we also want the lyric highlight to jump to the new spot
+    if (!this.lyriqIsPlaying) {
+        this.syncLyrics(); 
+    }
+  }
+
   private handleScrubMove = (e: MouseEvent | TouchEvent): void => {
     if (!this.isScrubbing) return;
     e.preventDefault();
@@ -2653,9 +2854,7 @@ Follow these rules:
     const clampedScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScroll));
 
     this.lyriqWaveforms.scrollLeft = clampedScrollLeft;
-    const newTime = clampedScrollLeft / this.PIXELS_PER_SECOND;
-
-    this.updatePlayheadPosition(newTime, false, true);
+    this.handleWaveformScrub(clampedScrollLeft);
   }
   
   private handleScrubEnd = (): void => {
@@ -2940,6 +3139,9 @@ Follow these rules:
     this.recordingStatus.textContent = message;
     if (isError) {
       document.body.classList.add('error');
+      this.triggerHapticFeedback([40, 30, 40]); // Error feedback
+    } else {
+      this.triggerHapticFeedback(20); // Success feedback
     }
     document.body.classList.remove('is-processing');
 
@@ -3032,6 +3234,290 @@ Follow these rules:
         this.appContainer.classList.add('sidebar-collapsed');
       }
     }
+  }
+  
+  // --- Project Management ---
+  private createProject(): void {
+      // Prevent creating multiple new projects at once
+      if (document.getElementById('new-project-input-li')) {
+          return;
+      }
+
+      const li = document.createElement('li');
+      li.id = 'new-project-input-li';
+      li.innerHTML = `
+          <div class="sidebar-link-input-container">
+              <i class="fas fa-folder"></i>
+              <input type="text" id="new-project-input" placeholder="New Project Name" />
+              <button class="save-project-btn" title="Save"><i class="fas fa-check"></i></button>
+              <button class="cancel-project-btn" title="Cancel"><i class="fas fa-times"></i></button>
+          </div>
+      `;
+      this.projectsList.appendChild(li);
+
+      const input = document.getElementById('new-project-input') as HTMLInputElement;
+      const saveBtn = li.querySelector('.save-project-btn') as HTMLButtonElement;
+      const cancelBtn = li.querySelector('.cancel-project-btn') as HTMLButtonElement;
+      
+      input.focus();
+
+      const saveProject = () => {
+          const name = input.value.trim();
+          if (name) {
+              const newProject: Project = {
+                  id: `project_${Date.now()}`,
+                  name: name,
+              };
+              this.projects.set(newProject.id, newProject);
+              this.saveDataToStorage();
+              this.renderSidebar();
+              this.renderProjectAssignment();
+              this.triggerHapticFeedback(20);
+          } else {
+              li.remove();
+          }
+      };
+
+      const cancelProject = () => {
+          li.remove();
+      };
+
+      saveBtn.onclick = saveProject;
+      cancelBtn.onclick = cancelProject;
+
+      input.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+              e.preventDefault();
+              saveProject();
+          } else if (e.key === 'Escape') {
+              cancelProject();
+          }
+      };
+      
+      input.onblur = (e) => {
+          const relatedTarget = e.relatedTarget as HTMLElement;
+          if (!relatedTarget || !li.contains(relatedTarget)) {
+              setTimeout(() => {
+                  if (document.getElementById('new-project-input-li')) {
+                      cancelProject();
+                  }
+              }, 100);
+          }
+      };
+  }
+
+  private renameProject(projectId: string): void {
+      const project = this.projects.get(projectId);
+      if (!project) return;
+      
+      if (document.querySelector('.sidebar-link-input-container')) {
+          return;
+      }
+      
+      const projectButton = this.projectsList.querySelector(`button[data-project-id="${projectId}"]`) as HTMLButtonElement;
+      if (!projectButton) return;
+
+      const projectLi = projectButton.parentElement!;
+      projectLi.innerHTML = `
+          <div class="sidebar-link-input-container">
+              <i class="fas fa-folder"></i>
+              <input type="text" id="rename-project-input" value="${project.name}" />
+              <button class="save-project-btn" title="Save"><i class="fas fa-check"></i></button>
+              <button class="cancel-project-btn" title="Cancel"><i class="fas fa-times"></i></button>
+          </div>
+      `;
+      
+      const input = projectLi.querySelector('#rename-project-input') as HTMLInputElement;
+      const saveBtn = projectLi.querySelector('.save-project-btn') as HTMLButtonElement;
+      const cancelBtn = projectLi.querySelector('.cancel-project-btn') as HTMLButtonElement;
+
+      input.focus();
+      input.select();
+
+      const saveRename = () => {
+          const newName = input.value.trim();
+          if (newName) {
+              project.name = newName;
+              this.saveDataToStorage();
+              this.renderSidebar();
+              this.renderProjectAssignment();
+              if (this.activeView === 'list' && this.currentFilter.id === projectId) {
+                  this.renderNotesList();
+              }
+              this.triggerHapticFeedback(20);
+          } else {
+              this.renderSidebar();
+          }
+      };
+      
+      const cancelRename = () => {
+          this.renderSidebar();
+      };
+      
+      saveBtn.onclick = saveRename;
+      cancelBtn.onclick = cancelRename;
+
+      input.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+              e.preventDefault();
+              saveRename();
+          } else if (e.key === 'Escape') {
+              cancelRename();
+          }
+      };
+
+      input.onblur = (e) => {
+          const relatedTarget = e.relatedTarget as HTMLElement;
+          if (!relatedTarget || !projectLi.contains(relatedTarget)) {
+              setTimeout(() => {
+                  if (this.projectsList.querySelector(`li > div.sidebar-link-input-container`)) {
+                       cancelRename();
+                  }
+              }, 100);
+          }
+      };
+  }
+
+
+  private deleteProject(projectId: string): void {
+      if (!this.projects.has(projectId)) return;
+
+      this.projects.delete(projectId);
+
+      // Un-assign notes from this project
+      this.notes.forEach(note => {
+          if (note.projectId === projectId) {
+              note.projectId = null;
+          }
+      });
+      
+      if (this.currentFilter.type === 'project' && this.currentFilter.id === projectId) {
+          this.currentFilter = { type: 'all', id: null };
+          if (this.activeView === 'list') {
+              this.renderNotesList();
+          }
+      }
+
+      this.saveDataToStorage();
+      this.renderSidebar();
+      this.renderProjectAssignment();
+      this.triggerHapticFeedback(20); // Success feedback
+  }
+
+  private filterByProject(projectId: string): void {
+      this.triggerHapticFeedback();
+      this.currentFilter = { type: 'project', id: projectId };
+      this.setActiveView('list');
+  }
+
+  private renderProjectAssignment(): void {
+      if (!this.currentNoteId) return;
+      const note = this.notes.get(this.currentNoteId);
+      if (!note) return;
+
+      const project = note.projectId ? this.projects.get(note.projectId) : null;
+      this.projectAssignmentText.textContent = project ? project.name : 'No Project';
+
+      this.projectAssignmentMenu.innerHTML = ''; // Clear existing
+      
+      // Add "No Project" option
+      const noProjectBtn = document.createElement('button');
+      noProjectBtn.className = 'project-assignment-menu-item';
+      noProjectBtn.textContent = 'No Project';
+      noProjectBtn.dataset.projectId = '';
+      this.projectAssignmentMenu.appendChild(noProjectBtn);
+      
+      if (this.projects.size > 0) {
+        const separator = document.createElement('div');
+        separator.className = 'project-assignment-menu-separator';
+        this.projectAssignmentMenu.appendChild(separator);
+
+        [...this.projects.values()].sort((a,b) => a.name.localeCompare(b.name)).forEach(p => {
+            const projectBtn = document.createElement('button');
+            projectBtn.className = 'project-assignment-menu-item';
+            projectBtn.textContent = p.name;
+            projectBtn.dataset.projectId = p.id;
+            this.projectAssignmentMenu.appendChild(projectBtn);
+        });
+      }
+  }
+
+  private assignNoteToProject(projectId: string | null): void {
+      if (!this.currentNoteId) return;
+      const note = this.notes.get(this.currentNoteId);
+      if (!note) return;
+
+      note.projectId = projectId;
+      this.saveDataToStorage();
+      this.saveNoteState();
+      this.renderProjectAssignment();
+  }
+
+  private handleProjectContextMenu(e: MouseEvent): void {
+      e.preventDefault();
+      e.stopPropagation();
+      const target = e.target as HTMLElement;
+      const projectItem = target.closest<HTMLElement>('.sidebar-link');
+      const projectId = projectItem?.dataset.projectId;
+      if (projectId) {
+          this.showProjectContextMenu(e, projectId);
+      }
+  }
+
+  private handleProjectTouchStart(e: TouchEvent): void {
+      this.handleNoteTouchEnd(); // Clear any existing timer
+      const target = e.target as HTMLElement;
+      const projectItem = target.closest<HTMLElement>('.sidebar-link');
+      const projectId = projectItem?.dataset.projectId;
+      
+      if (!projectId) return;
+      
+      this.longPressTimer = window.setTimeout(() => {
+          this.triggerHapticFeedback(50);
+          e.preventDefault();
+          const touch = e.touches[0];
+          this.showProjectContextMenu({
+              preventDefault: () => {},
+              stopPropagation: () => {},
+              target: touch.target,
+              clientX: touch.clientX,
+              clientY: touch.clientY,
+          } as any, projectId);
+          this.longPressTimer = null;
+      }, this.LONG_PRESS_DURATION);
+  }
+
+  private showProjectContextMenu(e: MouseEvent, projectId: string): void {
+      e.preventDefault();
+      e.stopPropagation();
+
+      this.contextMenu.style.top = `${e.clientY}px`;
+      this.contextMenu.style.left = `${e.clientX}px`;
+      this.contextMenu.style.display = 'block';
+
+      this.contextMenu.innerHTML = `
+        <ul class="context-menu-list">
+          <li><button class="context-menu-item" data-action="rename"><i class="fas fa-pencil-alt"></i>Rename Project</button></li>
+          <li class="context-menu-separator"></li>
+          <li><button class="context-menu-item delete" data-action="delete"><i class="fas fa-trash-alt"></i>Delete Project</button></li>
+        </ul>
+      `;
+
+      this.contextMenu.onclick = (event) => {
+          const actionTarget = (event.target as HTMLElement).closest<HTMLButtonElement>('.context-menu-item');
+          if (actionTarget) {
+              this.triggerHapticFeedback();
+              const action = actionTarget.dataset.action;
+              if (action === 'delete') {
+                  if (confirm('Are you sure you want to delete this project? Notes will not be deleted.')) {
+                      this.deleteProject(projectId);
+                  }
+              } else if (action === 'rename') {
+                  this.renameProject(projectId);
+              }
+              this.hideContextMenu();
+          }
+      };
   }
 
 }

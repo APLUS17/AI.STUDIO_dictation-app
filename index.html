@@ -40,7 +40,10 @@
               </ul>
           </div>
           <div class="sidebar-section">
-            <h3 class="sidebar-section-title">Projects</h3>
+            <div class="sidebar-section-header">
+              <h3 class="sidebar-section-title">Projects</h3>
+              <button class="sidebar-header-action-btn" id="newProjectButton" title="New Project"><i class="fas fa-plus"></i></button>
+            </div>
             <ul class="sidebar-list" id="projectsList">
               <!-- Dynamically populated -->
             </ul>
@@ -62,6 +65,16 @@
             </button>
             <div class="editor-title" contenteditable="true" placeholder="Untitled Note">
               Untitled Note
+            </div>
+            <div class="project-assignment-container" id="projectAssignmentContainer">
+              <button id="projectAssignmentButton" class="project-assignment-btn">
+                <i class="fas fa-folder"></i>
+                <span id="projectAssignmentText">No Project</span>
+                <i class="fas fa-chevron-down"></i>
+              </button>
+              <div id="projectAssignmentMenu" class="project-assignment-menu">
+                <!-- Populated by JS -->
+              </div>
             </div>
           </div>
           <div class="header-right-cluster">
@@ -103,25 +116,24 @@
       
       <div class="notes-list-view">
         <div class="notes-list-header">
-          <!-- Back button removed to match design -->
-          <div class="header-title-container">
-              <h1>Ideas</h1>
-              <!-- Note count removed to match design -->
-          </div>
+          <button class="action-button" id="notesListBackButton" title="Back to Editor">
+              <i class="fas fa-chevron-left"></i>
+          </button>
+          <h1 id="notesListTitle">Library</h1>
           <div class="profile-icon">
               <i class="fas fa-user"></i>
           </div>
         </div>
-        <div class="ideas-tabs">
-          <button class="idea-tab-btn active" data-tab="songs" title="Songs">
+        <div class="library-tabs">
+          <button class="library-tab-btn active" data-tab="songs" title="Songs">
               <i class="fas fa-music"></i>
               <span>Songs</span>
           </button>
-          <button class="idea-tab-btn" data-tab="verses" title="Verses">
+          <button class="library-tab-btn" data-tab="verses" title="Verses">
               <i class="fas fa-quote-right"></i>
               <span>Verses</span>
           </button>
-          <button class="idea-tab-btn" data-tab="takes" title="Takes">
+          <button class="library-tab-btn" data-tab="takes" title="Takes">
               <i class="fas fa-microphone-alt"></i>
               <span>Takes</span>
           </button>
@@ -247,49 +259,43 @@
                       <button id="lyriqExpandedPlayBtn" class="lyriq-control-btn-simple" title="Play/Pause"><i class="fas fa-play"></i></button>
                   </div>
               </div>
-
           </div>
+          
+          <input type="file" id="audioUpload" accept="audio/*" class="visually-hidden">
           <audio id="lyriqAudio"></audio>
           <audio id="lyriqVocalAudio"></audio>
-          <input id="audioUpload" type="file" accept="audio/mp3,audio/wav/*" style="display:none">
       </div>
 
     </div>
 
     <div class="recording-interface" id="recordingInterface">
-      <div class="recording-peek-indicator"></div>
-      <div class="recording-interface-handle-container" id="recordingInterfaceHandle">
-          <div class="recording-interface-handle"></div>
-      </div>
-      <button id="finishRecordingButton" class="finish-recording-button" title="Finish Recording">
-        <i class="fas fa-check"></i>
-      </button>
-      <div id="liveRecordingTitle" class="live-recording-title">
-        Recording
-      </div>
-      <div id="liveRecordingTimerDisplay" class="live-recording-timer">
-        00:00.00
-      </div>
-      <div class="waveform-container" id="liveWaveformContainer">
-        <canvas id="liveWaveformCanvas"></canvas>
-        <div id="previewPlayhead" class="preview-playhead"></div>
-      </div>
-      <div id="recordingStatus" class="status-indicator">
-      </div>
-      <div class="recording-controls">
-        <button id="recordButton" class="record-button" title="Start/Pause/Playback Recording">
-          <i class="fas fa-microphone"></i>
-          <i class="fas fa-stop" style="display: none;"></i>
-          <i class="fas fa-play" style="display: none;"></i>
-          <i class="fas fa-pause" style="display: none;"></i>
-          <span id="recordButtonText" class="record-button-text"></span>
+        <div class="recording-peek-indicator"></div>
+        <div class="recording-interface-handle-container" id="recordingInterfaceHandle">
+            <div class="recording-interface-handle"></div>
+        </div>
+        <div id="liveRecordingTitle" class="live-recording-title" contenteditable="false">New Recording</div>
+        <div class="waveform-container" id="liveWaveformContainer">
+            <canvas id="liveWaveformCanvas"></canvas>
+            <div class="preview-playhead" id="previewPlayhead"></div>
+        </div>
+        <div id="liveRecordingTimerDisplay">00:00.00</div>
+        <div class="status-indicator" id="recordingStatus">Ready to record</div>
+        <div class="recording-controls">
+            <button class="record-button" id="recordButton" title="Record/Pause">
+                <i class="fas fa-microphone"></i>
+                <i class="fas fa-stop"></i>
+                <i class="fas fa-play"></i>
+                <i class="fas fa-pause"></i>
+                <span id="recordButtonText" class="record-button-text"></span>
+            </button>
+        </div>
+        <button class="finish-recording-button" id="finishRecordingButton" title="Finish Recording">
+            <i class="fas fa-check"></i>
         </button>
-      </div>
     </div>
 
     <div id="contextMenu" class="context-menu"></div>
-    <div id="micStatus" class="debug-panel"></div>
 
-    <script type="module" src="/index.js"></script>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
