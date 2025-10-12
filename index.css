@@ -1463,6 +1463,18 @@ body.light-mode .lyriq-action-btn.active {
   font-weight: 400;
 }
 
+/* Lyriq Editor Mode */
+.lyriq-player-view.editor-mode .lyriq-lyrics {
+  text-align: left;
+  padding: 0 40px 30vh;
+}
+.lyriq-player-view.editor-mode .lyriq-line,
+.lyriq-player-view.editor-mode #lyricsContainer[contenteditable=true] {
+  cursor: text;
+  color: var(--color-text);
+}
+
+
 /* Lyriq Initial Controls Bar */
 .lyriq-initial-controls {
   position: absolute;

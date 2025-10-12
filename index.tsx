@@ -168,6 +168,7 @@ class VoiceNotesApp {
   private lyriqPlayerButton: HTMLAnchorElement;
   private lyriqSidebarToggleButton: HTMLButtonElement;
   private lyriqToggleScrollBtn: HTMLButtonElement;
+  private lyriqModeToggleBtn: HTMLButtonElement;
   private audioUploadInput: HTMLInputElement;
   private lyriqAudioPlayer: HTMLAudioElement;
   private lyriqVocalAudioPlayer: HTMLAudioElement;
@@ -229,6 +230,8 @@ class VoiceNotesApp {
   private lyriqWordSpans: NodeListOf<HTMLSpanElement> | null = null;
   private activeMixerTrack: MixerTrack = 'beat';
   private vocalBlobForMaster: Blob | null = null;
+  private lyriqMode: 'karaoke' | 'editor' = 'karaoke';
+  private lyriqLyricsAreDirty = false;
   
   private lyriqAnimationId: number | null = null;
   private readonly PIXELS_PER_SECOND = 100;
@@ -315,6 +318,7 @@ class VoiceNotesApp {
     this.lyriqPlayerButton = document.getElementById('lyriqPlayerButton') as HTMLAnchorElement;
     this.lyriqSidebarToggleButton = document.getElementById('lyriqSidebarToggleButton') as HTMLButtonElement;
     this.lyriqToggleScrollBtn = document.getElementById('lyriqToggleScrollBtn') as HTMLButtonElement;
+    this.lyriqModeToggleBtn = document.getElementById('lyriqModeToggleBtn') as HTMLButtonElement;
     this.audioUploadInput = document.getElementById('audioUpload') as HTMLInputElement;
     this.lyriqAudioPlayer = document.getElementById('lyriqAudio') as HTMLAudioElement;
     this.lyriqVocalAudioPlayer = document.getElementById('lyriqVocalAudio') as HTMLAudioElement;
@@ -509,6 +513,7 @@ class VoiceNotesApp {
     });
     this.lyriqSidebarToggleButton.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleSidebar(); });
     this.lyriqToggleScrollBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleLyriqAutoScroll(); });
+    this.lyriqModeToggleBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleLyriqMode(); });
     this.audioUploadInput.addEventListener('change', (e) => this.handleLyriqFileUpload(e as Event));
     this.lyriqInitialAddBeatBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.audioUploadInput.click(); });
     this.lyriqInitialRecordBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.showLyriqModal(true); });
@@ -576,6 +581,11 @@ class VoiceNotesApp {
 
   // --- View Management ---
   private setActiveView(view: AppView): void {
+      // Save any pending edits if leaving Lyriq editor mode
+      if (this.activeView === 'lyriq' && this.lyriqMode === 'editor') {
+          this.updateNoteFromLyriqEditor();
+      }
+
       this.activeView = view;
 
       // Pause audio if navigating away from player
@@ -596,6 +606,18 @@ class VoiceNotesApp {
               break;
           case 'lyriq':
               this.appContainer.classList.add('lyriq-player-active');
+              // Reset to default Karaoke mode when entering the view
+              this.lyriqMode = 'karaoke';
+              this.lyriqLyricsAreDirty = false;
+              this.lyriqPlayerView.classList.remove('editor-mode');
+              this.lyricsContainer.contentEditable = 'false';
+              this.lyricsContainer.removeEventListener('input', this.handleLyriqEdit);
+              const icon = this.lyriqModeToggleBtn?.querySelector('i');
+              if (icon) {
+                  icon.className = 'fas fa-edit';
+                  this.lyriqModeToggleBtn.title = 'Editor Mode';
+              }
+
               this.loadNoteIntoLyriqPlayer();
               if (this.beatAudioBuffer) {
                   this.lyriqPlayerView.classList.remove('empty-state');
@@ -2168,6 +2190,69 @@ Follow these rules:
 
 
   // --- Lyriq Player ---
+  private toggleLyriqMode(): void {
+      this.lyriqMode = this.lyriqMode === 'karaoke' ? 'editor' : 'karaoke';
+      this.lyriqLyricsAreDirty = false; // Reset dirty flag on every toggle
+      const icon = this.lyriqModeToggleBtn.querySelector('i')!;
+  
+      if (this.lyriqMode === 'editor') {
+          this.lyriqPlayerView.classList.add('editor-mode');
+          icon.className = 'fas fa-microphone-alt';
+          this.lyriqModeToggleBtn.title = 'Karaoke Mode';
+          this.lyricsContainer.contentEditable = 'true';
+          this.lyricsContainer.addEventListener('input', this.handleLyriqEdit);
+          // Set focus to the editor
+          this.lyricsContainer.focus();
+      } else {
+          // Save any pending changes before switching out of editor mode
+          this.updateNoteFromLyriqEditor();
+          this.lyriqPlayerView.classList.remove('editor-mode');
+          icon.className = 'fas fa-edit';
+          this.lyriqModeToggleBtn.title = 'Editor Mode';
+          this.lyricsContainer.contentEditable = 'false';
+          this.lyricsContainer.removeEventListener('input', this.handleLyriqEdit);
+          // Reload the note to ensure karaoke view has correct (potentially un-synced) text
+          this.loadNoteIntoLyriqPlayer();
+      }
+  }
+
+  private handleLyriqEdit = (): void => {
+      this.lyriqLyricsAreDirty = true;
+      // Debounce the save operation to avoid excessive writes
+      if (this.debounceTimer) clearTimeout(this.debounceTimer);
+      this.debounceTimer = window.setTimeout(() => {
+          this.updateNoteFromLyriqEditor();
+      }, 800);
+  }
+
+  private updateNoteFromLyriqEditor = (): void => {
+    if (!this.currentNoteId || this.lyriqMode !== 'editor') return;
+    const note = this.notes.get(this.currentNoteId);
+    if (!note) return;
+
+    const newText = this.lyricsContainer.innerText;
+
+    // Check if the text has actually changed to avoid unnecessary saves
+    const currentText = this.flattenSections(note.sections);
+    if (currentText === newText) {
+        return;
+    }
+
+    note.polishedNote = newText;
+    // A simple way to update sections from flat text
+    note.sections = [{ type: 'Verse', content: newText, takes: [] }];
+    note.timestamp = Date.now();
+    
+    // If lyrics were edited by the user, the timing data is now invalid and must be cleared.
+    if (this.lyriqLyricsAreDirty) {
+        note.syncedWords = null;
+        this.lyriqLyricsAreDirty = false; // Reset after clearing
+    }
+    
+    this.saveDataToStorage();
+    // Do not save to undo/redo history from here to prevent spamming the history stack.
+  }
+
   private updateLyriqControlsState(): void {
       const hasAudio = !!(this.beatAudioBuffer || this.vocalAudioBuffer);
       const isRecordingInLyriq = this.isRecording && this.activeView === 'lyriq';
@@ -2557,6 +2642,46 @@ Follow these rules:
   }
 
   // --- Context Menu ---
+  // Fix: Added missing implementation for handleProjectContextMenu
+  private handleProjectContextMenu(e: MouseEvent): void {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const target = e.target as HTMLElement;
+    const projectButton = target.closest<HTMLButtonElement>('.sidebar-link');
+    const projectId = projectButton?.dataset.projectId;
+
+    if (!projectId) return;
+
+    this.contextMenu.style.top = `${e.clientY}px`;
+    this.contextMenu.style.left = `${e.clientX}px`;
+    this.contextMenu.style.display = 'block';
+
+    this.contextMenu.innerHTML = `
+      <ul class="context-menu-list">
+        <li><button class="context-menu-item" data-action="rename"><i class="fas fa-pencil-alt"></i>Rename</button></li>
+        <li class="context-menu-separator"></li>
+        <li><button class="context-menu-item delete" data-action="delete"><i class="fas fa-trash-alt"></i>Delete Project</button></li>
+      </ul>
+    `;
+
+    this.contextMenu.onclick = (event) => {
+        const actionTarget = (event.target as HTMLElement).closest<HTMLButtonElement>('.context-menu-item');
+        if (actionTarget) {
+            this.triggerHapticFeedback();
+            const action = actionTarget.dataset.action;
+            if (action === 'delete') {
+                if (confirm('Are you sure you want to delete this project? This will not delete the notes inside it.')) {
+                    this.deleteProject(projectId);
+                }
+            } else if (action === 'rename') {
+                this.renameProject(projectId);
+            }
+            this.hideContextMenu();
+        }
+    };
+  }
+
   private showNoteContextMenu(e: MouseEvent, explicitNoteId?: string): void {
       e.preventDefault();
       e.stopPropagation();
@@ -2605,6 +2730,30 @@ Follow these rules:
       if (this.contextMenu) {
           this.contextMenu.style.display = 'none';
       }
+  }
+
+  // Fix: Added missing implementation for handleProjectTouchStart
+  private handleProjectTouchStart(e: TouchEvent): void {
+      this.handleNoteTouchEnd(); // Clear any existing timer
+      const target = e.target as HTMLElement;
+      const projectButton = target.closest<HTMLButtonElement>('.sidebar-link');
+      const projectId = projectButton?.dataset.projectId;
+      
+      if (!projectId) return;
+      
+      this.longPressTimer = window.setTimeout(() => {
+          this.triggerHapticFeedback(50);
+          e.preventDefault(); // Prevent scrolling and other default actions
+          const touch = e.touches[0];
+          this.handleProjectContextMenu({
+              preventDefault: () => {},
+              stopPropagation: () => {},
+              target: touch.target,
+              clientX: touch.clientX,
+              clientY: touch.clientY,
+          } as any);
+          this.longPressTimer = null;
+      }, this.LONG_PRESS_DURATION);
   }
 
   private handleNoteTouchStart(e: TouchEvent, explicitNoteId?: string): void {
@@ -3246,15 +3395,51 @@ Follow these rules:
 
   private handleOutsideClick(e: MouseEvent): void {
     const target = e.target as HTMLElement;
-    // Hide sidebar on outside click on mobile
-    if (this.isMobile && !this.appContainer.classList.contains('sidebar-collapsed')) {
-      if (!target.closest('.sidebar') && !target.closest('.sidebar-toggle-button')) {
-        this.appContainer.classList.add('sidebar-collapsed');
-      }
+
+    // This logic only applies on mobile when the sidebar is open.
+    if (!this.isMobile || this.appContainer.classList.contains('sidebar-collapsed')) {
+      return;
     }
+
+    // Check if the click was on any of the elements that should NOT close the sidebar.
+    const clickedInsideSidebar = target.closest('.sidebar');
+    const clickedOnEditorToggle = this.sidebarToggleButton.contains(target);
+    const clickedOnLyriqToggle = this.lyriqSidebarToggleButton.contains(target);
+
+    if (clickedInsideSidebar || clickedOnEditorToggle || clickedOnLyriqToggle) {
+      // Click was inside the sidebar or on a toggle button, so do nothing.
+      return;
+    }
+
+    // If the click was outside all of those elements, close the sidebar.
+    this.appContainer.classList.add('sidebar-collapsed');
   }
   
   // --- Project Management ---
+  // Fix: Added missing implementation for assignNoteToProject
+  private assignNoteToProject(projectId: string | null): void {
+    if (!this.currentNoteId) return;
+    const note = this.notes.get(this.currentNoteId);
+    if (!note) return;
+
+    if (note.projectId === projectId) return;
+
+    this.updateCurrentNoteContent();
+    this.saveNoteState();
+
+    note.projectId = projectId;
+    note.timestamp = Date.now();
+
+    this.saveDataToStorage();
+    this.saveNoteState();
+    this.renderProjectAssignment();
+    this.renderSidebar();
+
+    if (this.activeView === 'list') {
+        this.renderNotesList();
+    }
+  }
+
   private createProject(): void {
       // Prevent creating multiple new projects at once
       if (document.getElementById('new-project-input-li')) {
@@ -3449,96 +3634,20 @@ Follow these rules:
         const separator = document.createElement('div');
         separator.className = 'project-assignment-menu-separator';
         this.projectAssignmentMenu.appendChild(separator);
-
-        [...this.projects.values()].sort((a,b) => a.name.localeCompare(b.name)).forEach(p => {
-            const projectBtn = document.createElement('button');
-            projectBtn.className = 'project-assignment-menu-item';
-            projectBtn.textContent = p.name;
-            projectBtn.dataset.projectId = p.id;
-            this.projectAssignmentMenu.appendChild(projectBtn);
-        });
       }
-  }
-
-  private assignNoteToProject(projectId: string | null): void {
-      if (!this.currentNoteId) return;
-      const note = this.notes.get(this.currentNoteId);
-      if (!note) return;
-
-      note.projectId = projectId;
-      this.saveDataToStorage();
-      this.saveNoteState();
-      this.renderProjectAssignment();
-  }
-
-  private handleProjectContextMenu(e: MouseEvent): void {
-      e.preventDefault();
-      e.stopPropagation();
-      const target = e.target as HTMLElement;
-      const projectItem = target.closest<HTMLElement>('.sidebar-link');
-      const projectId = projectItem?.dataset.projectId;
-      if (projectId) {
-          this.showProjectContextMenu(e, projectId);
-      }
-  }
-
-  private handleProjectTouchStart(e: TouchEvent): void {
-      this.handleNoteTouchEnd(); // Clear any existing timer
-      const target = e.target as HTMLElement;
-      const projectItem = target.closest<HTMLElement>('.sidebar-link');
-      const projectId = projectItem?.dataset.projectId;
       
-      if (!projectId) return;
-      
-      this.longPressTimer = window.setTimeout(() => {
-          this.triggerHapticFeedback(50);
-          e.preventDefault();
-          const touch = e.touches[0];
-          this.showProjectContextMenu({
-              preventDefault: () => {},
-              stopPropagation: () => {},
-              target: touch.target,
-              clientX: touch.clientX,
-              clientY: touch.clientY,
-          } as any, projectId);
-          this.longPressTimer = null;
-      }, this.LONG_PRESS_DURATION);
+      const sortedProjects = [...this.projects.values()].sort((a, b) => a.name.localeCompare(b.name));
+      sortedProjects.forEach(project => {
+          const btn = document.createElement('button');
+          btn.className = 'project-assignment-menu-item';
+          btn.textContent = project.name;
+          btn.dataset.projectId = project.id;
+          this.projectAssignmentMenu.appendChild(btn);
+      });
   }
-
-  private showProjectContextMenu(e: MouseEvent, projectId: string): void {
-      e.preventDefault();
-      e.stopPropagation();
-
-      this.contextMenu.style.top = `${e.clientY}px`;
-      this.contextMenu.style.left = `${e.clientX}px`;
-      this.contextMenu.style.display = 'block';
-
-      this.contextMenu.innerHTML = `
-        <ul class="context-menu-list">
-          <li><button class="context-menu-item" data-action="rename"><i class="fas fa-pencil-alt"></i>Rename Project</button></li>
-          <li class="context-menu-separator"></li>
-          <li><button class="context-menu-item delete" data-action="delete"><i class="fas fa-trash-alt"></i>Delete Project</button></li>
-        </ul>
-      `;
-
-      this.contextMenu.onclick = (event) => {
-          const actionTarget = (event.target as HTMLElement).closest<HTMLButtonElement>('.context-menu-item');
-          if (actionTarget) {
-              this.triggerHapticFeedback();
-              const action = actionTarget.dataset.action;
-              if (action === 'delete') {
-                  if (confirm('Are you sure you want to delete this project? Notes will not be deleted.')) {
-                      this.deleteProject(projectId);
-                  }
-              } else if (action === 'rename') {
-                  this.renameProject(projectId);
-              }
-              this.hideContextMenu();
-          }
-      };
-  }
-
 }
 
 // Initialize the app
-new VoiceNotesApp();
+document.addEventListener('DOMContentLoaded', () => {
+  new VoiceNotesApp();
+});
