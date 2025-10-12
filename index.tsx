@@ -232,7 +232,7 @@ class VoiceNotesApp {
   
   private lyriqAnimationId: number | null = null;
   private readonly PIXELS_PER_SECOND = 100;
-  private readonly LYRIQ_HIGHLIGHT_OFFSET = -0.01; // -10ms lookahead for better perceived sync
+  private readonly LYRIQ_HIGHLIGHT_OFFSET = 0.03; // 30ms lookahead for anticipation
   
   private isMobile: boolean = window.innerWidth <= 1024;
   private lyriqDebugMode = false;
