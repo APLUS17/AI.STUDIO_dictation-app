@@ -421,6 +421,19 @@ body {
   color: var(--color-text-tertiary);
 }
 
+.sidebar-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999; /* Below sidebar, above content */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-normal);
+}
+
 .main-content {
   flex: 1;
   display: flex;
@@ -1928,3 +1941,191 @@ body.light-mode .lyriq-action-btn.active {
 }
 
 .volume-percentage {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: right;
+  width: 40px;
+}
+
+.volume-slider-container {
+  flex-grow: 1;
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.volume-slider-container::before { /* Track background */
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 99px;
+}
+
+.volume-slider-fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 4px;
+  background-color: #fff;
+  border-radius: 99px;
+  pointer-events: none;
+}
+#beatVolumeFill { background-color: var(--color-accent-alt); }
+
+.lyriq-controls-modal.volume-view-active .lyriq-volume-mixer {
+  opacity: 1;
+  pointer-events: auto;
+}
+.lyriq-controls-modal.volume-view-active .lyriq-waveforms,
+.lyriq-controls-modal.volume-view-active .lyriq-expanded-track-list,
+.lyriq-controls-modal.volume-view-active .lyriq-expanded-header {
+  opacity: 0;
+  pointer-events: none;
+}
+
+
+/* --- Context Menu --- */
+.context-menu {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    background-color: var(--glass-bg);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+    padding: 8px;
+    min-width: 180px;
+}
+
+.context-menu-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: background-color var(--transition-fast);
+}
+.context-menu-item:hover {
+    background-color: var(--color-surface-active);
+}
+.context-menu-item.delete:hover {
+    background-color: rgba(255, 69, 58, 0.2);
+    color: var(--color-recording);
+}
+.context-menu-item i {
+    width: 16px;
+    text-align: center;
+    color: var(--color-text-secondary);
+}
+.context-menu-item.delete:hover i {
+  color: var(--color-recording);
+}
+
+.context-menu-separator {
+    height: 1px;
+    background-color: var(--color-border);
+    margin: 4px 8px;
+}
+
+/* --- Responsive Design --- */
+@media (max-width: 1024px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1000;
+    height: 100%;
+  }
+  .app-container.sidebar-collapsed .sidebar {
+    margin-left: calc(-1 * var(--sidebar-width));
+  }
+  .app-container:not(.sidebar-collapsed) .sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .sidebar-toggle-button {
+    display: flex;
+  }
+  .main-header {
+    padding: 12px 16px;
+  }
+  .note-content-wrapper {
+    padding: 16px 16px 100px;
+  }
+  .header-right-cluster {
+    gap: 4px;
+  }
+  .action-button {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+  }
+  .editor-title { font-size: 20px; }
+  .project-assignment-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .notes-list-header {
+    padding: 12px 16px;
+  }
+  .notes-list-header h1 {
+    font-size: 22px;
+  }
+  .notes-list-content {
+    padding: 16px;
+  }
+  .lyriq-header, .lyriq-song-info, .lyriq-lyrics {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .lyriq-song-info {
+    padding-top: 70px;
+  }
+  .lyriq-line { font-size: 18px; }
+  #lyriqSongTitle { font-size: 22px; }
+  .lyriq-peek-controls { gap: 8px; }
+  .lyriq-modal-peek-header, .lyriq-modal-expanded-content {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .lyriq-expanded-controls { gap: 16px; }
+}
+
+/* Fallback for browsers that don't support backdrop-filter */
+@supports not ((-webkit-backdrop-filter: none) or (backdrop-filter: none)) {
+  .recording-interface, .lyriq-controls-modal, .takes-context-menu, .context-menu {
+    background: var(--color-bg-alt);
+  }
+  .lyriq-header .sidebar-toggle-button, .lyriq-action-btn {
+     background-color: var(--color-bg-alt);
+  }
+  body.light-mode {
+    .recording-interface, .lyriq-controls-modal, .takes-context-menu, .context-menu {
+      background: var(--color-bg-alt-light);
+    }
+  }
+}

@@ -102,6 +102,7 @@ class VoiceNotesApp {
   private themeToggleIcon: HTMLElement;
   private editorTitle: HTMLDivElement;
   private sidebar: HTMLElement;
+  private sidebarBackdrop: HTMLDivElement;
   private sidebarToggleButton: HTMLButtonElement;
   private sidebarNewNoteButton: HTMLButtonElement;
   private allNotesButton: HTMLAnchorElement;
@@ -253,7 +254,8 @@ class VoiceNotesApp {
 
   constructor() {
     // Initialize AI
-    this.genAI = new GoogleGenAI({apiKey: process.env.API_KEY!});
+    // FIX: Initialize GoogleGenAI with a named apiKey parameter.
+    this.genAI = new GoogleGenAI({apiKey: process.env.API_KEY});
 
     // Get all necessary DOM elements
     this.appContainer = document.getElementById('appContainer') as HTMLDivElement;
@@ -264,6 +266,7 @@ class VoiceNotesApp {
     this.themeToggleIcon = this.themeToggleButton.querySelector('i') as HTMLElement;
     this.editorTitle = document.querySelector('.editor-title') as HTMLDivElement;
     this.sidebar = document.querySelector('.sidebar') as HTMLElement;
+    this.sidebarBackdrop = document.getElementById('sidebarBackdrop') as HTMLDivElement;
     this.sidebarToggleButton = document.getElementById('sidebarToggleButton') as HTMLButtonElement;
     this.sidebarNewNoteButton = document.getElementById('sidebarNewNoteButton') as HTMLButtonElement;
     this.allNotesButton = document.getElementById('allNotesButton') as HTMLAnchorElement;
@@ -403,6 +406,7 @@ class VoiceNotesApp {
 
     // Sidebar controls
     this.sidebarToggleButton.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleSidebar(); });
+    this.sidebarBackdrop.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleSidebar(); });
     this.sidebarNewNoteButton.addEventListener('click', async () => {
         this.triggerHapticFeedback();
         await this.createNewNote();
@@ -569,7 +573,6 @@ class VoiceNotesApp {
       if (!this.projectAssignmentContainer.contains(e.target as Node)) {
           this.projectAssignmentContainer.classList.remove('open');
       }
-      this.handleOutsideClick(e);
     });
     
     // Context Menu Listeners (Desktop Right-Click + Mobile Long-Press)
@@ -3265,385 +3268,224 @@ Follow these rules:
       note.sections = state.sections;
       note.polishedNote = state.polishedNote;
       note.editorFormat = state.editorFormat;
-
+      
+      // Re-render the editor with the new state
       this.editorTitle.textContent = note.title;
+      this.updatePlaceholderVisibility(this.editorTitle);
       this.renderNoteContent(note);
       this.saveDataToStorage();
+      this.renderSidebar();
+  }
+
+  // FIX: Add implementations for all missing methods.
+  // --- Projects ---
+  private createProject(): void {
+    const projectName = prompt('Enter new project name:');
+    if (projectName && projectName.trim() !== '') {
+        const newProject: Project = {
+            id: `project_${Date.now()}`,
+            name: projectName.trim(),
+        };
+        this.projects.set(newProject.id, newProject);
+        this.saveDataToStorage();
+        this.renderSidebar();
+        this.triggerHapticFeedback(20);
+    }
+  }
+
+  private renameProject(projectId: string): void {
+    const project = this.projects.get(projectId);
+    if (!project) return;
+    
+    const newName = prompt("Enter new project name:", project.name);
+    if (newName && newName.trim() !== '') {
+      project.name = newName.trim();
+      this.saveDataToStorage();
+      this.renderSidebar();
+      if (this.activeView === 'list' && this.currentFilter.id === projectId) {
+        this.renderNotesList();
+      }
+    }
+  }
+
+  private deleteProject(projectId: string): void {
+    if (!this.projects.has(projectId)) return;
+    
+    this.notes.forEach(note => {
+      if (note.projectId === projectId) {
+        note.projectId = null;
+      }
+    });
+  
+    this.projects.delete(projectId);
+  
+    if (this.currentFilter.type === 'project' && this.currentFilter.id === projectId) {
+        this.currentFilter = { type: 'all', id: null };
+        if (this.activeView === 'list') {
+            this.renderNotesList();
+        }
+    }
+    
+    this.saveDataToStorage();
+    this.renderSidebar();
+  }
+  
+  private assignNoteToProject(projectId: string | null): void {
+    if (!this.currentNoteId) return;
+    const note = this.notes.get(this.currentNoteId);
+    if (note) {
+      this.updateCurrentNoteContent();
+      this.saveNoteState();
+      note.projectId = projectId;
+      note.timestamp = Date.now();
+      this.saveDataToStorage();
+      this.saveNoteState();
+      this.renderProjectAssignment();
+      this.triggerHapticFeedback(20);
+    }
+  }
+
+  private filterByProject(projectId: string): void {
+    this.triggerHapticFeedback();
+    this.currentFilter = { type: 'project', id: projectId };
+    this.setActiveView('list');
+  }
+
+  private renderProjectAssignment(): void {
+    if (!this.currentNoteId) return;
+    const note = this.notes.get(this.currentNoteId);
+    let projectName = 'No Project';
+    if (note && note.projectId && this.projects.has(note.projectId)) {
+      projectName = this.projects.get(note.projectId)!.name;
+    }
+    this.projectAssignmentText.textContent = projectName;
+    
+    const projectsHtml = [...this.projects.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(p => `<li><button class="project-assignment-menu-item" data-project-id="${p.id}">${p.name}</button></li>`)
+      .join('');
+  
+    this.projectAssignmentMenu.innerHTML = `
+      <li><button class="project-assignment-menu-item" data-project-id="">No Project</button></li>
+      <li class="context-menu-separator"></li>
+      ${projectsHtml}
+    `;
+  }
+  
+  // --- Event Handlers & Global State ---
+  private handleKeyDown(e: KeyboardEvent): void {
+    if (e.metaKey || e.ctrlKey) {
+      if (e.key === 'z') {
+        e.preventDefault();
+        this.undo();
+      } else if (e.key === 'y' || (e.key === 'Z' && e.shiftKey)) {
+        e.preventDefault();
+        this.redo();
+      }
+    }
+  }
+
+  private setAppHeight(): void {
+    const doc = document.documentElement;
+    doc.style.setProperty('--app-height', `${window.innerHeight}px`);
   }
   
   private updateUndoRedoButtons(): void {
     if (!this.currentNoteId) {
-        this.undoButton.disabled = true;
-        this.redoButton.disabled = true;
-        return;
-    };
+      this.undoButton.disabled = true;
+      this.redoButton.disabled = true;
+      return;
+    }
     const history = this.noteHistories.get(this.currentNoteId);
-    this.undoButton.disabled = !history || history.undo.length <= 1;
-    this.redoButton.disabled = !history || history.redo.length === 0;
+    if (history) {
+      this.undoButton.disabled = history.undo.length <= 1;
+      this.redoButton.disabled = history.redo.length === 0;
+    } else {
+      this.undoButton.disabled = true;
+      this.redoButton.disabled = true;
+    }
   }
-
-  // --- Utility Functions ---
-  private triggerHapticFeedback(pattern: number | number[] = 5): void {
-    if ('vibrate' in navigator) {
-        try {
-            navigator.vibrate(pattern);
-        } catch (e) {
-            // Vibration may be disabled by user settings
-            console.log("Haptic feedback failed.", e);
-        }
+  
+  private updatePlaceholderVisibility(element: HTMLElement): void {
+    if (element.innerText.trim() === '') {
+      element.setAttribute('placeholder', element.getAttribute('placeholder') || '');
+    } else {
+      element.removeAttribute('placeholder');
     }
   }
 
-  private setFinalStatus(message: string, isError = false, duration = 3000): void {
+  private setFinalStatus(message: string, isError: boolean = false): void {
+    document.body.classList.remove('is-processing');
     this.isProcessing = false;
     this.recordingStatus.textContent = message;
-    if (isError) {
-      document.body.classList.add('error');
-      this.triggerHapticFeedback([40, 30, 40]); // Error feedback
-    } else {
-      this.triggerHapticFeedback(20); // Success feedback
-    }
-    document.body.classList.remove('is-processing');
-
+    this.recordingStatus.classList.toggle('error', isError);
+    this.updateRecordingStateUI();
+    
     setTimeout(() => {
-      this.recordingStatus.textContent = 'Ready to record';
-      document.body.classList.remove('error');
       this.setRecordingModalState('hidden');
-      this.clearLiveWaveform();
-    }, duration);
+      setTimeout(() => {
+          this.recordingStatus.textContent = '';
+          this.recordingStatus.classList.remove('error');
+      }, 500);
+    }, isError ? 3000 : 1500);
   }
 
-  private async blobToBase64(blob: Blob): Promise<string> {
+  // --- Utilities ---
+  private triggerHapticFeedback(duration: number | number[] = 20): void {
+    if (navigator.vibrate) {
+      navigator.vibrate(duration);
+    }
+  }
+
+  private formatTime(ms: number, showMilliseconds = false): string {
+    if (isNaN(ms) || ms < 0) {
+      return showMilliseconds ? '00:00.00' : '00:00';
+    }
+    const totalSeconds = ms / 1000;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = Math.floor(totalSeconds % 60);
+    const milliseconds = Math.floor((ms % 1000) / 10);
+  
+    const paddedMinutes = String(minutes).padStart(2, '0');
+    const paddedSeconds = String(seconds).padStart(2, '0');
+    const paddedMs = String(milliseconds).padStart(2, '0');
+  
+    return showMilliseconds
+      ? `${paddedMinutes}:${paddedSeconds}.${paddedMs}`
+      : `${paddedMinutes}:${paddedSeconds}`;
+  }
+
+  private getAudioDuration(url: string): Promise<number> {
+    return new Promise((resolve) => {
+      const audio = document.createElement('audio');
+      audio.onloadedmetadata = () => {
+        resolve(audio.duration * 1000);
+      };
+      audio.src = url;
+    });
+  }
+  
+  private blobToBase64(blob: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        const base64String = (reader.result as string).split(',')[1];
-        resolve(base64String);
+        const base64String = reader.result as string;
+        const base64Content = base64String.split(',')[1];
+        resolve(base64Content);
       };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
   }
-  
+
   private base64ToBlob(base64: string, mimeType: string): Blob {
-      const byteCharacters = atob(base64);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      return new Blob([byteArray], { type: mimeType });
-  }
-  
-  private async getAudioDuration(url: string): Promise<number> {
-      return new Promise((resolve, reject) => {
-          const audio = new Audio();
-          audio.addEventListener('loadedmetadata', () => {
-              resolve(audio.duration * 1000); // Return duration in milliseconds
-          });
-          audio.addEventListener('error', (e) => {
-              reject(e.error || new Error('Failed to load audio metadata.'));
-          });
-          audio.src = url;
-      });
-  }
-
-  private formatTime(ms: number, showMilliseconds = false): string {
-    if (isNaN(ms)) return "0:00";
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    const milliseconds = Math.floor((ms % 1000) / 10);
-    
-    if (showMilliseconds) {
-        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(2, '0')}`;
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
-    return `${minutes.toString()}:${seconds.toString().padStart(2, '0')}`;
-  }
-
-  private setAppHeight(): void {
-    const vh = window.innerHeight * 0.01;
-    document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
-  }
-
-  private updatePlaceholderVisibility(element: HTMLElement): void {
-      const text = (element as HTMLDivElement).innerText;
-      if (text.trim() === '') {
-          element.classList.add('placeholder-active');
-      } else {
-          element.classList.remove('placeholder-active');
-      }
-  }
-
-  private handleKeyDown(e: KeyboardEvent): void {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
-          e.preventDefault();
-          if (e.shiftKey) {
-              this.redo();
-          } else {
-              this.undo();
-          }
-      }
-      // Toggle Debug Mode
-      if (e.ctrlKey && e.altKey && e.key === 'd') {
-          e.preventDefault();
-          this.lyriqDebugMode = !this.lyriqDebugMode;
-          this.lyriqDebugPanel.style.display = this.lyriqDebugMode ? 'block' : 'none';
-          console.log(`Lyriq debug mode ${this.lyriqDebugMode ? 'enabled' : 'disabled'}.`);
-      }
-  }
-
-  private handleOutsideClick(e: MouseEvent): void {
-    const target = e.target as HTMLElement;
-
-    // This logic only applies on mobile when the sidebar is open.
-    if (!this.isMobile || this.appContainer.classList.contains('sidebar-collapsed')) {
-      return;
-    }
-
-    // Check if the click was on any of the elements that should NOT close the sidebar.
-    const clickedInsideSidebar = target.closest('.sidebar');
-    const clickedOnEditorToggle = this.sidebarToggleButton.contains(target);
-    const clickedOnLyriqToggle = this.lyriqSidebarToggleButton.contains(target);
-
-    if (clickedInsideSidebar || clickedOnEditorToggle || clickedOnLyriqToggle) {
-      // Click was inside the sidebar or on a toggle button, so do nothing.
-      return;
-    }
-
-    // If the click was outside all of those elements, close the sidebar.
-    this.appContainer.classList.add('sidebar-collapsed');
-  }
-  
-  // --- Project Management ---
-  // Fix: Added missing implementation for assignNoteToProject
-  private assignNoteToProject(projectId: string | null): void {
-    if (!this.currentNoteId) return;
-    const note = this.notes.get(this.currentNoteId);
-    if (!note) return;
-
-    if (note.projectId === projectId) return;
-
-    this.updateCurrentNoteContent();
-    this.saveNoteState();
-
-    note.projectId = projectId;
-    note.timestamp = Date.now();
-
-    this.saveDataToStorage();
-    this.saveNoteState();
-    this.renderProjectAssignment();
-    this.renderSidebar();
-
-    if (this.activeView === 'list') {
-        this.renderNotesList();
-    }
-  }
-
-  private createProject(): void {
-      // Prevent creating multiple new projects at once
-      if (document.getElementById('new-project-input-li')) {
-          return;
-      }
-
-      const li = document.createElement('li');
-      li.id = 'new-project-input-li';
-      li.innerHTML = `
-          <div class="sidebar-link-input-container">
-              <i class="fas fa-folder"></i>
-              <input type="text" id="new-project-input" placeholder="New Project Name" />
-              <button class="save-project-btn" title="Save"><i class="fas fa-check"></i></button>
-              <button class="cancel-project-btn" title="Cancel"><i class="fas fa-times"></i></button>
-          </div>
-      `;
-      this.projectsList.appendChild(li);
-
-      const input = document.getElementById('new-project-input') as HTMLInputElement;
-      const saveBtn = li.querySelector('.save-project-btn') as HTMLButtonElement;
-      const cancelBtn = li.querySelector('.cancel-project-btn') as HTMLButtonElement;
-      
-      input.focus();
-
-      const saveProject = () => {
-          const name = input.value.trim();
-          if (name) {
-              const newProject: Project = {
-                  id: `project_${Date.now()}`,
-                  name: name,
-              };
-              this.projects.set(newProject.id, newProject);
-              this.saveDataToStorage();
-              this.renderSidebar();
-              this.renderProjectAssignment();
-              this.triggerHapticFeedback(20);
-          } else {
-              li.remove();
-          }
-      };
-
-      const cancelProject = () => {
-          li.remove();
-      };
-
-      saveBtn.onclick = saveProject;
-      cancelBtn.onclick = cancelProject;
-
-      input.onkeydown = (e) => {
-          if (e.key === 'Enter') {
-              e.preventDefault();
-              saveProject();
-          } else if (e.key === 'Escape') {
-              cancelProject();
-          }
-      };
-      
-      input.onblur = (e) => {
-          const relatedTarget = e.relatedTarget as HTMLElement;
-          if (!relatedTarget || !li.contains(relatedTarget)) {
-              setTimeout(() => {
-                  if (document.getElementById('new-project-input-li')) {
-                      cancelProject();
-                  }
-              }, 100);
-          }
-      };
-  }
-
-  private renameProject(projectId: string): void {
-      const project = this.projects.get(projectId);
-      if (!project) return;
-      
-      if (document.querySelector('.sidebar-link-input-container')) {
-          return;
-      }
-      
-      const projectButton = this.projectsList.querySelector(`button[data-project-id="${projectId}"]`) as HTMLButtonElement;
-      if (!projectButton) return;
-
-      const projectLi = projectButton.parentElement!;
-      projectLi.innerHTML = `
-          <div class="sidebar-link-input-container">
-              <i class="fas fa-folder"></i>
-              <input type="text" id="rename-project-input" value="${project.name}" />
-              <button class="save-project-btn" title="Save"><i class="fas fa-check"></i></button>
-              <button class="cancel-project-btn" title="Cancel"><i class="fas fa-times"></i></button>
-          </div>
-      `;
-      
-      const input = projectLi.querySelector('#rename-project-input') as HTMLInputElement;
-      const saveBtn = projectLi.querySelector('.save-project-btn') as HTMLButtonElement;
-      const cancelBtn = projectLi.querySelector('.cancel-project-btn') as HTMLButtonElement;
-
-      input.focus();
-      input.select();
-
-      const saveRename = () => {
-          const newName = input.value.trim();
-          if (newName) {
-              project.name = newName;
-              this.saveDataToStorage();
-              this.renderSidebar();
-              this.renderProjectAssignment();
-              if (this.activeView === 'list' && this.currentFilter.id === projectId) {
-                  this.renderNotesList();
-              }
-              this.triggerHapticFeedback(20);
-          } else {
-              this.renderSidebar();
-          }
-      };
-      
-      const cancelRename = () => {
-          this.renderSidebar();
-      };
-      
-      saveBtn.onclick = saveRename;
-      cancelBtn.onclick = cancelRename;
-
-      input.onkeydown = (e) => {
-          if (e.key === 'Enter') {
-              e.preventDefault();
-              saveRename();
-          } else if (e.key === 'Escape') {
-              cancelRename();
-          }
-      };
-
-      input.onblur = (e) => {
-          const relatedTarget = e.relatedTarget as HTMLElement;
-          if (!relatedTarget || !projectLi.contains(relatedTarget)) {
-              setTimeout(() => {
-                  if (this.projectsList.querySelector(`li > div.sidebar-link-input-container`)) {
-                       cancelRename();
-                  }
-              }, 100);
-          }
-      };
-  }
-
-
-  private deleteProject(projectId: string): void {
-      if (!this.projects.has(projectId)) return;
-
-      this.projects.delete(projectId);
-
-      // Un-assign notes from this project
-      this.notes.forEach(note => {
-          if (note.projectId === projectId) {
-              note.projectId = null;
-          }
-      });
-      
-      if (this.currentFilter.type === 'project' && this.currentFilter.id === projectId) {
-          this.currentFilter = { type: 'all', id: null };
-          if (this.activeView === 'list') {
-              this.renderNotesList();
-          }
-      }
-
-      this.saveDataToStorage();
-      this.renderSidebar();
-      this.renderProjectAssignment();
-      this.triggerHapticFeedback(20); // Success feedback
-  }
-
-  private filterByProject(projectId: string): void {
-      this.triggerHapticFeedback();
-      this.currentFilter = { type: 'project', id: projectId };
-      this.setActiveView('list');
-  }
-
-  private renderProjectAssignment(): void {
-      if (!this.currentNoteId) return;
-      const note = this.notes.get(this.currentNoteId);
-      if (!note) return;
-
-      const project = note.projectId ? this.projects.get(note.projectId) : null;
-      this.projectAssignmentText.textContent = project ? project.name : 'No Project';
-
-      this.projectAssignmentMenu.innerHTML = ''; // Clear existing
-      
-      // Add "No Project" option
-      const noProjectBtn = document.createElement('button');
-      noProjectBtn.className = 'project-assignment-menu-item';
-      noProjectBtn.textContent = 'No Project';
-      noProjectBtn.dataset.projectId = '';
-      this.projectAssignmentMenu.appendChild(noProjectBtn);
-      
-      if (this.projects.size > 0) {
-        const separator = document.createElement('div');
-        separator.className = 'project-assignment-menu-separator';
-        this.projectAssignmentMenu.appendChild(separator);
-      }
-      
-      const sortedProjects = [...this.projects.values()].sort((a, b) => a.name.localeCompare(b.name));
-      sortedProjects.forEach(project => {
-          const btn = document.createElement('button');
-          btn.className = 'project-assignment-menu-item';
-          btn.textContent = project.name;
-          btn.dataset.projectId = project.id;
-          this.projectAssignmentMenu.appendChild(btn);
-      });
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
   }
 }
 
