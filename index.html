@@ -158,7 +158,7 @@
                   <button class="lyriq-action-btn active" id="lyriqToggleScrollBtn" title="Toggle Auto-Scroll">
                       <i class="fas fa-scroll"></i>
                   </button>
-                  <button class="lyriq-action-btn" title="More Options">
+                  <button class="lyriq-action-btn" id="lyriqMoreOptionsBtn" title="More Options">
                       <i class="fas fa-ellipsis"></i>
                   </button>
               </div>
@@ -170,6 +170,12 @@
       
           <div id="lyricsContainer" class="lyriq-lyrics">
               <!-- Lyrics populated here -->
+          </div>
+
+          <div id="lyriqDebugPanel" class="lyriq-debug-panel" style="display: none;">
+            <div>Time: <span id="debugTime">0.000</span></div>
+            <div>Word Idx: <span id="debugWordIndex">-1</span></div>
+            <div>Word Time: <span id="debugWordTime">N/A</span></div>
           </div>
           
           <div class="lyriq-initial-controls" id="lyriqInitialControls">
@@ -188,112 +194,120 @@
           </div>
 
           <div class="lyriq-controls-modal" id="lyriqControlsModal">
-              <div class="lyriq-modal-handle-container" id="lyriqModalHandle">
-                <div class="lyriq-modal-handle"></div>
+            <div class="lyriq-modal-handle-container" id="lyriqModalHandle">
+              <div class="lyriq-modal-handle"></div>
+            </div>
+
+            <div class="lyriq-modal-peek-header">
+              <div class="lyriq-peek-song-info">
+                <h2 id="lyriqModalPeekTitle">Song Title Here</h2>
+                <span class="lyriq-time-display" id="lyriqModalTime">0:00 / 0:00</span>
+              </div>
+              <div class="lyriq-peek-controls">
+                <button class="lyriq-control-btn-scrub" id="lyriqModalRewindBtn">
+                  <i class="fas fa-backward"></i>
+                  <span>15</span>
+                </button>
+                <button class="lyriq-control-btn-scrub" id="lyriqModalPeekPlayBtn">
+                  <i class="fas fa-play"></i>
+                </button>
+                <button class="lyriq-control-btn-scrub" id="lyriqModalForwardBtn">
+                  <i class="fas fa-forward"></i>
+                  <span>15</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="lyriq-modal-expanded-content">
+              <div class="lyriq-expanded-header">
+                <span id="lyriqExpandedTime">0:00</span>
               </div>
 
-              <div class="lyriq-modal-peek-header">
-                  <div class="lyriq-peek-song-info">
-                      <h3 id="lyriqModalPeekTitle">New Recording</h3>
-                      <span id="lyriqModalTime" class="lyriq-time-display">0:00 / 0:00</span>
+              <div class="lyriq-expanded-body">
+                  <div class="lyriq-expanded-track-list">
+                    <button id="lyriqExpandedAddBeatBtn" class="lyriq-track-select-btn" title="Beat Track">
+                      <i class="fas fa-music"></i>
+                    </button>
+                    <button id="lyriqExpandedVocalBtn" class="lyriq-track-select-btn" title="Vocal Track">
+                      <i class="fas fa-microphone-alt"></i>
+                    </button>
                   </div>
-                  <div class="lyriq-peek-controls">
-                      <button id="lyriqModalRewindBtn" class="lyriq-control-btn-scrub" title="Rewind 15s">
-                          <i class="fas fa-undo-alt"></i><span>15</span>
-                      </button>
-                      <button id="lyriqModalPeekPlayBtn" class="lyriq-control-btn-simple" title="Play/Pause">
-                          <i class="fas fa-play"></i>
-                      </button>
-                      <button id="lyriqModalForwardBtn" class="lyriq-control-btn-scrub" title="Forward 15s">
-                          <i class="fas fa-redo-alt"></i><span>15</span>
-                      </button>
-                  </div>
-              </div>
 
-              <div class="lyriq-modal-expanded-content">
-                  <div class="lyriq-expanded-header">
-                      <span id="lyriqExpandedTime">0:00</span>
-                  </div>
-                  <div class="lyriq-expanded-body">
-                      <div class="lyriq-expanded-track-list">
-                          <button id="lyriqExpandedAddBeatBtn" class="lyriq-track-select-btn" data-track="beat" title="Beat Track">
-                              <i class="fas fa-music"></i>
-                          </button>
-                          <button id="lyriqExpandedVocalBtn" class="lyriq-track-select-btn" data-track="vocal" title="Vocal Track">
-                              <i class="fas fa-microphone"></i>
-                          </button>
+                  <div class="lyriq-timeline-container">
+                      <div class="lyriq-playhead" id="lyriqPlayhead"></div>
+                      <div class="lyriq-waveforms">
+                          <canvas id="beatWaveformCanvas"></canvas>
+                          <canvas id="vocalWaveformCanvas"></canvas>
                       </div>
-                      <div class="lyriq-timeline-container">
-                          <div id="lyriqPlayhead" class="lyriq-playhead"></div>
-                          <div class="lyriq-waveforms">
-                              <canvas id="beatWaveformCanvas"></canvas>
-                              <canvas id="vocalWaveformCanvas"></canvas>
-                          </div>
-                          <div class="lyriq-volume-mixer" id="lyriqVolumeMixer">
-                            <div class="volume-track" data-track="beat">
-                              <div class="volume-label">
-                                <i class="fas fa-music"></i>
+                      <div class="lyriq-volume-mixer" id="lyriqVolumeMixer">
+                        <div class="volume-track" data-track="beat">
+                            <div class="volume-label">
                                 <span class="volume-percentage" id="beatVolumePercentage">100%</span>
-                              </div>
-                              <div class="volume-slider-container" id="beatVolumeSliderContainer">
+                            </div>
+                            <div class="volume-slider-container" id="beatVolumeSliderContainer">
                                 <div class="volume-slider-fill" id="beatVolumeFill"></div>
-                              </div>
                             </div>
-                            <div class="volume-track" data-track="vocal">
-                              <div class="volume-label">
-                                <i class="fas fa-microphone"></i>
+                        </div>
+                        <div class="volume-track" data-track="vocal">
+                            <div class="volume-label">
                                 <span class="volume-percentage" id="vocalVolumePercentage">100%</span>
-                              </div>
-                              <div class="volume-slider-container" id="vocalVolumeSliderContainer">
-                                <div class="volume-slider-fill" id="vocalVolumeFill"></div>
-                              </div>
                             </div>
-                          </div>
+                            <div class="volume-slider-container" id="vocalVolumeSliderContainer">
+                                <div class="volume-slider-fill" id="vocalVolumeFill"></div>
+                            </div>
+                        </div>
                       </div>
                   </div>
-                  <div class="lyriq-expanded-controls">
-                      <button id="lyriqExpandedVolumeBtn" class="lyriq-control-btn-simple" title="Adjust Volume"><i class="fas fa-volume-up"></i></button>
-                      <button id="lyriqExpandedRecordBtn" class="lyriq-record-pill-btn" title="Record">
-                          <div class="record-icon-inner"></div>
-                      </button>
-                      <button id="lyriqExpandedPlayBtn" class="lyriq-control-btn-simple" title="Play/Pause"><i class="fas fa-play"></i></button>
-                  </div>
               </div>
+
+              <div class="lyriq-expanded-controls">
+                  <button class="lyriq-control-btn-simple" id="lyriqExpandedVolumeBtn" title="Mixer">
+                      <i class="fas fa-volume-up"></i>
+                  </button>
+                  <button class="lyriq-record-pill-btn" id="lyriqExpandedRecordBtn" title="Record Vocals">
+                      <div class="record-icon-inner"></div>
+                  </button>
+                  <button class="lyriq-control-btn-simple" id="lyriqExpandedPlayBtn" title="Play/Pause">
+                      <i class="fas fa-play"></i>
+                  </button>
+              </div>
+            </div>
+
           </div>
-          
-          <input type="file" id="audioUpload" accept="audio/*" class="visually-hidden">
+
           <audio id="lyriqAudio"></audio>
           <audio id="lyriqVocalAudio"></audio>
+          <input type="file" id="audioUpload" accept="audio/wav,audio/mpeg,audio/mp3,audio/ogg,audio/flac,audio/aac,audio/*,.wav" class="visually-hidden">
       </div>
 
     </div>
 
     <div class="recording-interface" id="recordingInterface">
+      <div class="recording-interface-handle-container" id="recordingInterfaceHandle">
         <div class="recording-peek-indicator"></div>
-        <div class="recording-interface-handle-container" id="recordingInterfaceHandle">
-            <div class="recording-interface-handle"></div>
-        </div>
-        <div id="liveRecordingTitle" class="live-recording-title" contenteditable="false">New Recording</div>
-        <div class="waveform-container" id="liveWaveformContainer">
-            <canvas id="liveWaveformCanvas"></canvas>
-            <div class="preview-playhead" id="previewPlayhead"></div>
-        </div>
-        <div id="liveRecordingTimerDisplay">00:00.00</div>
-        <div class="status-indicator" id="recordingStatus">Ready to record</div>
-        <div class="recording-controls">
-            <button class="record-button" id="recordButton" title="Record/Pause">
-                <i class="fas fa-microphone"></i>
-                <i class="fas fa-stop"></i>
-                <i class="fas fa-play"></i>
-                <i class="fas fa-pause"></i>
-                <span id="recordButtonText" class="record-button-text"></span>
-            </button>
-        </div>
-        <button class="finish-recording-button" id="finishRecordingButton" title="Finish Recording">
-            <i class="fas fa-check"></i>
+        <div class="recording-interface-handle"></div>
+      </div>
+      <div class="live-recording-title" id="liveRecordingTitle" contenteditable="false">New Recording</div>
+      <div class="waveform-container" id="liveWaveformContainer">
+        <canvas id="liveWaveformCanvas"></canvas>
+        <div class="preview-playhead" id="previewPlayhead"></div>
+      </div>
+      <div id="liveRecordingTimerDisplay">00:00.00</div>
+      <div class="recording-status" id="recordingStatus">Ready to record</div>
+      <div class="recording-controls">
+        <button class="record-button" id="recordButton" title="Record/Pause">
+          <i class="fas fa-microphone"></i>
+          <i class="fas fa-stop"></i>
+          <i class="fas fa-play"></i>
+          <i class="fas fa-pause"></i>
+          <span class="record-button-text" id="recordButtonText"></span>
         </button>
+        <button class="finish-recording-button" id="finishRecordingButton" title="Finish Recording">
+          <i class="fas fa-check"></i>
+        </button>
+      </div>
     </div>
-
+    
     <div id="contextMenu" class="context-menu"></div>
 
     <script type="module" src="/index.tsx"></script>

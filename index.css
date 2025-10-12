@@ -1,4 +1,5 @@
 
+
 @import url(https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css);
 @import url(https://fonts.cdnfonts.com/css/sf-mono);
 
@@ -1120,7 +1121,8 @@ body {
 
 .record-button.recording .fa-microphone { display: none; }
 .record-button.recording .fa-stop { display: block; }
-.record-button.recording {
+
+#recordButton.recording {
   border-radius: 16px;
 }
 
@@ -1433,29 +1435,28 @@ body.light-mode .lyriq-action-btn.active {
   font-weight: 600;
   line-height: 1.5;
   color: var(--color-text-tertiary);
-  transition: color 0.4s ease, transform 0.4s ease;
   margin-bottom: 16px;
 }
 
 .lyriq-line > span {
-  transition: color 0.15s ease-out, background-color 0.15s ease-out, transform 0.15s ease-out;
   display: inline-block;
   padding: 2px 4px;
   margin: 0 -4px;
   border-radius: 4px;
+  color: var(--color-text-tertiary);
+  transition: none; /* Ensure highlighting is instant */
 }
 
+.lyriq-line .past-word {
+  color: var(--color-text);
+  background-color: transparent;
+}
 .lyriq-line .highlighted-word {
   background-color: var(--color-accent);
-  color: var(--color-bg);
-  font-weight: 700;
-  transform: none;
+  color: var(--color-bg) !important; /* Use important to override other color states */
 }
 
-.lyriq-line.active {
-  color: var(--color-text);
-  transform: scale(1.05);
-}
+
 .lyriq-line.placeholder {
   color: var(--color-text-tertiary);
   font-style: italic;
@@ -1915,183 +1916,3 @@ body.light-mode .lyriq-action-btn.active {
 }
 
 .volume-percentage {
-  font-family: var(--font-mono);
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--color-text);
-}
-
-.volume-slider-container {
-  height: 32px;
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  flex-grow: 1;
-}
-
-.volume-slider-fill {
-  height: 100%;
-  background-color: var(--color-accent-alt);
-  border-radius: 16px;
-  position: relative;
-}
-.volume-track[data-track="vocal"] .volume-slider-fill {
-  background-color: #fff;
-}
-.volume-slider-fill::after {
-  content: '';
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 2px;
-  height: 16px;
-  background-color: rgba(0,0,0,0.4);
-  border-radius: 1px;
-}
-
-
-/* --- Lyriq Volume Mixer Toggle Logic --- */
-.lyriq-controls-modal.volume-view-active .lyriq-volume-mixer {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.lyriq-controls-modal.volume-view-active .lyriq-expanded-header,
-.lyriq-controls-modal.volume-view-active .lyriq-waveforms,
-.lyriq-controls-modal.volume-view-active .lyriq-playhead {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.lyriq-controls-modal.volume-view-active #lyriqExpandedRecordBtn,
-.lyriq-controls-modal.volume-view-active #lyriqExpandedPlayBtn {
-  opacity: 0.3;
-  pointer-events: none;
-}
-
-
-/* --- Context Menu --- */
-.context-menu {
-  position: fixed;
-  z-index: 1000;
-  display: none;
-  background-color: var(--glass-bg);
-  backdrop-filter: blur(15px);
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  box-shadow: var(--shadow-md);
-  padding: 6px;
-}
-.context-menu-list { list-style: none; }
-.context-menu-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px;
-  border: none; background: transparent;
-  color: var(--color-text);
-  width: 100%;
-  text-align: left;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.context-menu-item:hover { background-color: var(--color-surface-active); }
-.context-menu-item.delete { color: var(--color-recording); }
-.context-menu-separator {
-  height: 1px;
-  background: var(--color-border);
-  margin: 4px 0;
-}
-
-
-/* Custom Scrollbars */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
-body.light-mode ::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.15);
-}
-
-body.light-mode ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.25);
-}
-
-/* --- Responsive Styles --- */
-@media (max-width: 1024px) {
-  .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    z-index: 1000;
-    margin-left: 0;
-    transform: translateX(-100%);
-    transition: transform var(--transition-normal);
-  }
-  .app-container:not(.sidebar-collapsed) .sidebar {
-    transform: translateX(0);
-  }
-  .app-container.sidebar-collapsed .sidebar {
-    transform: translateX(-100%);
-  }
-  .main-header .sidebar-toggle-button {
-    display: flex;
-  }
-  .main-header {
-    /* Increased right padding to avoid overlap with preview controls */
-    padding: 12px 100px 12px 16px;
-  }
-  .notes-list-header, .lyriq-header {
-    /* Increased right padding to avoid overlap with preview controls */
-    padding-right: 100px;
-  }
-  .note-content-wrapper {
-    padding: 16px;
-    padding-bottom: 100px;
-  }
-  .editor-title { font-size: 20px; }
-  .header-right-cluster .action-button {
-    display: none;
-  }
-  .lyriq-player-view {
-    padding-bottom: calc(var(--lyriq-modal-peeking-height) + env(safe-area-inset-bottom));
-  }
-}
-@media (max-width: 768px) {
-  .notes-grid {
-    grid-template-columns: 1fr;
-  }
-  .lyriq-line {
-    font-size: 20px;
-  }
-  .lyriq-expanded-controls {
-    gap: 16px;
-  }
-  .lyriq-modal-peek-header {
-    padding: 8px 16px;
-  }
-  .lyriq-modal-expanded-content {
-    padding: 0 16px 16px;
-  }
-  .project-assignment-container {
-    display: none; /* Hide on mobile to simplify header */
-  }
-}

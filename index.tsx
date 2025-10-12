@@ -1,4 +1,3 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -227,14 +226,23 @@ class VoiceNotesApp {
   private lyriqIsPlaying = false;
   private lyriqAutoScrollEnabled = true;
   private lyriqCurrentWordIndex = -1;
+  private lyriqWordSpans: NodeListOf<HTMLSpanElement> | null = null;
   private activeMixerTrack: MixerTrack = 'beat';
   private vocalBlobForMaster: Blob | null = null;
   
   private lyriqAnimationId: number | null = null;
   private readonly PIXELS_PER_SECOND = 100;
+  private readonly LYRIQ_HIGHLIGHT_OFFSET = -0.01; // -10ms lookahead for better perceived sync
   
   private isMobile: boolean = window.innerWidth <= 1024;
-  
+  private lyriqDebugMode = false;
+
+  // Debug panel elements
+  private lyriqDebugPanel: HTMLDivElement;
+  private debugTime: HTMLSpanElement;
+  private debugWordIndex: HTMLSpanElement;
+  private debugWordTime: HTMLSpanElement;
+
   // Long press properties
   private longPressTimer: number | null = null;
   private readonly LONG_PRESS_DURATION = 500; // 500ms for long press
@@ -349,6 +357,12 @@ class VoiceNotesApp {
     this.vocalVolumeFill = document.getElementById('vocalVolumeFill') as HTMLDivElement;
     this.beatVolumePercentage = document.getElementById('beatVolumePercentage') as HTMLSpanElement;
     this.vocalVolumePercentage = document.getElementById('vocalVolumePercentage') as HTMLSpanElement;
+
+    // Debug panel
+    this.lyriqDebugPanel = document.getElementById('lyriqDebugPanel') as HTMLDivElement;
+    this.debugTime = document.getElementById('debugTime') as HTMLSpanElement;
+    this.debugWordIndex = document.getElementById('debugWordIndex') as HTMLSpanElement;
+    this.debugWordTime = document.getElementById('debugWordTime') as HTMLSpanElement;
 
     // Initial setup
     this.bindEventListeners();
@@ -1288,8 +1302,11 @@ class VoiceNotesApp {
     } catch (err) {
         console.error('Error accessing microphone:', err);
         const errName = (err as Error).name;
+        const errMessage = (err as Error).message;
         if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
             this.recordingStatus.innerHTML = 'Microphone access denied. <br> Please enable it in your browser settings to record.';
+        } else if (errMessage.includes('AVAudioSession')) { // Specific error for iOS
+            this.recordingStatus.innerHTML = 'Could not start microphone. <br> Another app might be using it. Please try again.';
         } else {
             this.recordingStatus.textContent = 'Could not access microphone.';
         }
@@ -1403,8 +1420,9 @@ class VoiceNotesApp {
       this.mediaRecorder.onstop = null; // Prevent processing
       this.mediaRecorder.stop();
     }
-    this.stream?.getTracks().forEach(track => track.stop());
-    this.stream = null;
+
+    this.cleanupAudioResources(); // Centralized cleanup
+
     this.audioChunks = [];
     this.isRecording = false;
     this.isPaused = false;
@@ -1412,22 +1430,38 @@ class VoiceNotesApp {
     this.recordingTargetSectionIndex = null;
 
     this.stopTimer();
-    this.stopLiveWaveform();
-    this.stopLyriqLiveWaveform();
     this.clearLiveWaveform();
     this.liveRecordingTimerDisplay.textContent = '00:00.00';
-
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-        this.audioContext.close().catch(e => console.error("Error closing audio context", e));
-    }
-    this.audioContext = null;
-    this.analyserNode = null;
-    this.waveformDataArray = null;
 
     if (hideModal) {
       this.setRecordingModalState('hidden');
     }
     this.updateRecordingStateUI();
+  }
+
+  /**
+   * Centralized cleanup function to stop all audio tracks, close the AudioContext,
+   * and nullify related properties. This is critical for releasing the microphone
+   * and preventing errors on subsequent recordings, especially on iOS.
+   */
+  private cleanupAudioResources(): void {
+    // Stop all media stream tracks to release the microphone. This is the most critical part.
+    this.stream?.getTracks().forEach(track => track.stop());
+    this.stream = null;
+
+    // Stop any running waveform animations.
+    this.stopLiveWaveform();
+    this.stopLyriqLiveWaveform();
+
+    // Close the AudioContext to release the audio hardware session.
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+        this.audioContext.close().catch(e => console.error("Error closing audio context", e));
+    }
+
+    // Nullify properties to prevent stale references on the next recording.
+    this.audioContext = null;
+    this.analyserNode = null;
+    this.waveformDataArray = null;
   }
 
   private async startRecording(): Promise<void> {
@@ -1450,64 +1484,64 @@ class VoiceNotesApp {
         };
     
         this.mediaRecorder.onstop = async () => {
-          this.isRecording = false;
-          this.isPaused = false;
-
-          // Clean up stream tracks
-          this.stream?.getTracks().forEach(track => track.stop());
-          this.stream = null;
-          
-          const audioBlob = new Blob(this.audioChunks, { type: this.mediaRecorder!.mimeType });
-          this.audioChunks = [];
-
-          if (audioBlob.size < 1000) { // Guard against empty recordings
-            this.setFinalStatus('Recording too short.', true);
-            return;
-          }
-
-          if (this.activeView === 'lyriq') {
-              // If no beat is loaded, this vocal becomes the master track for playback.
-              if (!this.beatAudioBuffer) {
-                  this.vocalBlobForMaster = audioBlob;
-                  this.lyriqAudioPlayer.src = URL.createObjectURL(audioBlob);
-              } else {
-                  this.lyriqVocalAudioPlayer.src = URL.createObjectURL(audioBlob);
-              }
-
-              await this.processAndRenderVocalWaveform(audioBlob);
-              this.lyriqExpandedVocalBtn.classList.add('has-recording');
-              
-              await this.processRecordingForLyriq(audioBlob);
-
+          try {
+            this.isRecording = false;
+            this.isPaused = false;
+            
+            const audioBlob = new Blob(this.audioChunks, { type: this.mediaRecorder!.mimeType });
+            this.audioChunks = [];
+        
+            if (audioBlob.size < 1000) { // Guard against empty recordings
+              this.setFinalStatus('Recording too short.', true);
               return;
+            }
+        
+            if (this.activeView === 'lyriq') {
+                // If no beat is loaded, this vocal becomes the master track for playback.
+                if (!this.beatAudioBuffer) {
+                    this.vocalBlobForMaster = audioBlob;
+                    this.lyriqAudioPlayer.src = URL.createObjectURL(audioBlob);
+                } else {
+                    this.lyriqVocalAudioPlayer.src = URL.createObjectURL(audioBlob);
+                }
+        
+                await this.processAndRenderVocalWaveform(audioBlob);
+                this.lyriqExpandedVocalBtn.classList.add('has-recording');
+                
+                await this.processRecordingForLyriq(audioBlob);
+        
+                return;
+            }
+        
+            // If it's an editor recording, save it to the target section
+            const note = this.notes.get(this.currentNoteId!);
+            if (note && this.recordingTargetSectionIndex !== null) {
+                const section = note.sections[this.recordingTargetSectionIndex];
+                if (section) {
+                    const newTake: AudioTake = {
+                        id: `take_${Date.now()}`,
+                        url: URL.createObjectURL(audioBlob),
+                        data: await this.blobToBase64(audioBlob),
+                        mimeType: audioBlob.type,
+                        duration: await this.getAudioDuration(URL.createObjectURL(audioBlob)),
+                        timestamp: Date.now()
+                    };
+                    section.takes.push(newTake);
+                    this.saveDataToStorage();
+                    this.saveNoteState();
+                    this.renderNoteContent(note);
+                    this.setFinalStatus('Take saved!');
+                } else {
+                    this.setFinalStatus('Target section not found.', true);
+                }
+            } else {
+              // This is a general recording, transcribe and process it.
+              await this.processRecordingWithAI(audioBlob);
+            }
+            this.recordingTargetSectionIndex = null; // Reset target
+          } finally {
+            this.cleanupAudioResources();
           }
-
-          // If it's an editor recording, save it to the target section
-          const note = this.notes.get(this.currentNoteId!);
-          if (note && this.recordingTargetSectionIndex !== null) {
-              const section = note.sections[this.recordingTargetSectionIndex];
-              if (section) {
-                  const newTake: AudioTake = {
-                      id: `take_${Date.now()}`,
-                      url: URL.createObjectURL(audioBlob),
-                      data: await this.blobToBase64(audioBlob),
-                      mimeType: audioBlob.type,
-                      duration: await this.getAudioDuration(URL.createObjectURL(audioBlob)),
-                      timestamp: Date.now()
-                  };
-                  section.takes.push(newTake);
-                  this.saveDataToStorage();
-                  this.saveNoteState();
-                  this.renderNoteContent(note);
-                  this.setFinalStatus('Take saved!');
-              } else {
-                  this.setFinalStatus('Target section not found.', true);
-              }
-          } else {
-            // This is a general recording, transcribe and process it.
-            await this.processRecordingWithAI(audioBlob);
-          }
-          this.recordingTargetSectionIndex = null; // Reset target
         };
     
         this.mediaRecorder.start(100); // Trigger dataavailable every 100ms
@@ -1531,8 +1565,9 @@ class VoiceNotesApp {
     } catch (error) {
         console.error("Error creating MediaRecorder:", error);
         this.recordingStatus.textContent = 'Recording failed to start.';
-        this.isRecording = false;
-        this.updateRecordingStateUI();
+        // This is the key change. Call the main cleanup/reset function.
+        // It ensures the microphone stream is released even if MediaRecorder fails to start.
+        this.discardRecording(true);
     }
   }
 
@@ -1633,6 +1668,7 @@ Follow these rules:
     if (!this.currentNoteId) return;
 
     this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Syncing lyrics...</p>';
+    this.lyriqWordSpans = null;
     this.isProcessing = true;
     this.updateLyriqControlsState();
 
@@ -1688,6 +1724,7 @@ Follow these rules:
     } catch (error) {
         console.error("Error syncing lyrics:", error);
         this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Could not sync lyrics. Please try again.</p>';
+        this.lyriqWordSpans = null;
         setTimeout(() => this.loadNoteIntoLyriqPlayer(), 2000); // Revert to previous state
         this.triggerHapticFeedback([40, 30, 40]);
     } finally {
@@ -2212,6 +2249,7 @@ Follow these rules:
       this.lyriqSongTitle.textContent = note.title;
       this.lyriqModalPeekTitle.textContent = note.title;
       this.lyricsContainer.innerHTML = ''; // Clear existing
+      this.lyriqWordSpans = null; // Clear word spans cache
 
       if (note.syncedWords && note.syncedWords.length > 0) {
           this.renderSyncedWords(note.syncedWords);
@@ -2244,6 +2282,7 @@ Follow these rules:
           lineEl.appendChild(document.createTextNode(' ')); // Add space
       });
       this.lyricsContainer.appendChild(lineEl);
+      this.lyriqWordSpans = this.lyricsContainer.querySelectorAll('.lyriq-line span');
   }
 
   private async handleLyriqFileUpload(event: Event): Promise<void> {
@@ -2344,43 +2383,80 @@ Follow these rules:
     this.updatePlayheadPosition(this.lyriqAudioPlayer.currentTime);
   }
 
+  private findWordIndexAtTime(time: number, words: TimedWord[]): number {
+    if (!words || words.length === 0) {
+        return -1;
+    }
+
+    // Since playback is sequential, we can often start searching near the last highlighted word.
+    // However, for robustness with seeking, a full binary search is better.
+    // It looks for a word where time is between start and end.
+
+    let low = 0;
+    let high = words.length - 1;
+
+    while (low <= high) {
+        const mid = Math.floor(low + (high - low) / 2);
+        const word = words[mid];
+
+        if (time >= word.start && time < word.end) {
+            return mid; // Found the active word.
+        } else if (time < word.start) {
+            high = mid - 1; // The target is in the left half.
+        } else { // time >= word.end
+            low = mid + 1; // The target is in the right half.
+        }
+    }
+
+    // If the loop completes without finding a word, it means we are in a gap.
+    return -1;
+  }
+
   private updateHighlightedWord(currentTime: number): void {
-    const note = this.currentNoteId ? this.notes.get(this.currentNoteId) : null;
-    if (!note || !note.syncedWords) return;
+      const note = this.currentNoteId ? this.notes.get(this.currentNoteId) : null;
+      const lookaheadTime = currentTime + this.LYRIQ_HIGHLIGHT_OFFSET;
+  
+      if (!note || !note.syncedWords || !this.lyriqWordSpans || this.lyriqWordSpans.length === 0) {
+          this.clearWordHighlight();
+          return;
+      }
+  
+      const words = this.lyriqWordSpans;
+      const newHighlightIndex = this.findWordIndexAtTime(lookaheadTime, note.syncedWords);
+  
+      // Optimization: If the active word hasn't changed, do nothing.
+      if (newHighlightIndex === this.lyriqCurrentWordIndex) {
+          return;
+      }
 
-    const words = this.lyricsContainer.querySelectorAll('.lyriq-line span');
-    if (words.length === 0) return;
+      const oldHighlightIndex = this.lyriqCurrentWordIndex;
 
-    let newHighlightIndex = -1;
-    for (let i = 0; i < note.syncedWords.length; i++) {
-        const wordData = note.syncedWords[i];
-        if (currentTime >= wordData.start && currentTime <= wordData.end) {
-            newHighlightIndex = i;
-            break;
-        }
-    }
-    
-    if (this.lyriqCurrentWordIndex !== newHighlightIndex) {
-        if (this.lyriqCurrentWordIndex !== -1 && words[this.lyriqCurrentWordIndex]) {
-            words[this.lyriqCurrentWordIndex].classList.remove('highlighted-word');
-        }
-        if (newHighlightIndex !== -1 && words[newHighlightIndex]) {
-            const wordEl = words[newHighlightIndex];
-            wordEl.classList.add('highlighted-word');
-            if (this.lyriqAutoScrollEnabled) {
-                wordEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }
-        this.lyriqCurrentWordIndex = newHighlightIndex;
-    }
+      // Remove highlight from the previously active word, if there was one.
+      if (oldHighlightIndex !== -1 && oldHighlightIndex < words.length) {
+          words[oldHighlightIndex].classList.remove('highlighted-word');
+          words[oldHighlightIndex].classList.add('past-word');
+      }
+
+      // Add highlight to the new active word, if there is one.
+      if (newHighlightIndex !== -1) {
+          const newWordEl = words[newHighlightIndex];
+          newWordEl.classList.add('highlighted-word');
+          newWordEl.classList.remove('past-word');
+          
+          if (this.lyriqAutoScrollEnabled) {
+            newWordEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+      }
+  
+      this.lyriqCurrentWordIndex = newHighlightIndex;
   }
 
   private clearWordHighlight(): void {
-    const highlighted = this.lyricsContainer.querySelector('.highlighted-word');
-    if (highlighted) {
-        highlighted.classList.remove('highlighted-word');
-    }
-    this.lyriqCurrentWordIndex = -1;
+      this.lyriqWordSpans?.forEach(span => {
+          const el = span as HTMLElement;
+          el.classList.remove('highlighted-word', 'past-word');
+      });
+      this.lyriqCurrentWordIndex = -1;
   }
 
   private handleLyriqEnded(): void {
@@ -2749,7 +2825,7 @@ Follow these rules:
     
     // If paused, we also want the lyric highlight to jump to the new spot
     if (!this.lyriqIsPlaying) {
-        this.updateHighlightedWord(finalTime); 
+      this.updateHighlightedWord(finalTime);
     }
   }
 
@@ -2877,6 +2953,11 @@ Follow these rules:
           const currentTime = this.lyriqAudioPlayer.currentTime;
           this.updatePlayheadPosition(currentTime, !this.isScrubbing);
           this.updateHighlightedWord(currentTime);
+          
+          if (this.lyriqDebugMode) {
+            this.updateDebugPanel(currentTime);
+          }
+
           this.lyriqAnimationId = requestAnimationFrame(animate);
       };
       animate();
@@ -2938,6 +3019,24 @@ Follow these rules:
       this.lyriqModalTime.textContent = `${this.formatTime(clampedTime * 1000)} / ${this.formatTime(displayDuration * 1000)}`;
   }
 
+  private updateDebugPanel(currentTime: number): void {
+      if (!this.lyriqDebugPanel || !this.debugTime) return; // Guard
+      
+      this.debugTime.textContent = currentTime.toFixed(3);
+      this.debugWordIndex.textContent = this.lyriqCurrentWordIndex.toString();
+      
+      const note = this.currentNoteId ? this.notes.get(this.currentNoteId) : null;
+      if (note && note.syncedWords && this.lyriqCurrentWordIndex !== -1) {
+          const word = note.syncedWords[this.lyriqCurrentWordIndex];
+          if (word) {
+              this.debugWordTime.textContent = `${word.start.toFixed(3)} - ${word.end.toFixed(3)}`;
+          } else {
+              this.debugWordTime.textContent = 'N/A';
+          }
+      } else {
+          this.debugWordTime.textContent = 'N/A';
+      }
+  }
 
   // --- Undo / Redo ---
   private getNoteState(note: Note): NoteState {
@@ -3135,6 +3234,13 @@ Follow these rules:
           } else {
               this.undo();
           }
+      }
+      // Toggle Debug Mode
+      if (e.ctrlKey && e.altKey && e.key === 'd') {
+          e.preventDefault();
+          this.lyriqDebugMode = !this.lyriqDebugMode;
+          this.lyriqDebugPanel.style.display = this.lyriqDebugMode ? 'block' : 'none';
+          console.log(`Lyriq debug mode ${this.lyriqDebugMode ? 'enabled' : 'disabled'}.`);
       }
   }
 
