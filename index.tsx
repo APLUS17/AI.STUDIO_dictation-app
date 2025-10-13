@@ -221,7 +221,7 @@ class VoiceNotesApp {
   private lyriqWordSpans: NodeListOf<HTMLSpanElement> | null = null;
   private activeMixerTrack: MixerTrack = 'beat';
   private vocalBlobForMaster: Blob | null = null;
-  private lyriqMode: 'karaoke' | 'editor' = 'karaoke';
+  private lyriqMode: 'karaoke' | 'editor' = 'editor';
   private lyriqLyricsAreDirty = false;
   
   private lyriqAnimationId: number | null = null;
@@ -240,6 +240,14 @@ class VoiceNotesApp {
   // Long press properties
   private longPressTimer: number | null = null;
   private readonly LONG_PRESS_DURATION = 500; // 500ms for long press
+
+  // Swipe to delete properties
+  private isSwiping = false;
+  private swipeStartX = 0;
+  private swipeStartTime = 0;
+  private currentSwipeCard: HTMLElement | null = null;
+  private currentSwipeContainer: HTMLElement | null = null;
+  private readonly SWIPE_THRESHOLD = -80; // pixels
 
 
   constructor() {
@@ -463,7 +471,9 @@ class VoiceNotesApp {
     });
     this.addSectionBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.addSection(); });
     
-    // Prevent default drag behavior
+    // Swipe to delete listeners
+    this.songStructureEditor.addEventListener('mousedown', this.handleCardInteractionStart);
+    this.songStructureEditor.addEventListener('touchstart', this.handleCardInteractionStart, { passive: false });
     this.songStructureEditor.addEventListener('dragstart', (e) => e.preventDefault());
 
 
@@ -974,33 +984,35 @@ class VoiceNotesApp {
     card.dataset.index = index.toString();
     
     card.innerHTML = `
-      <div class="section-card-header">
-        <div class="section-type-dropdown">
-          <button class="section-type-btn" aria-haspopup="true">
-            <span>${section.type}</span>
-            <i class="fas fa-chevron-down"></i>
-          </button>
-          <ul class="section-type-menu" role="menu">
-            ${['Verse', 'Chorus', 'Bridge', 'Intro', 'Outro', 'Pre-Chorus', 'Hook', 'Solo'].map(type => `<li><button role="menuitem">${type}</button></li>`).join('')}
-          </ul>
-        </div>
-        <div class="section-header-actions">
-          <button class="section-action-btn record-take-btn" title="Record a new take">
-              <i class="fas fa-microphone-alt"></i>
-          </button>
-          ${section.takes.length > 0 ? `
-          <button class="takes-badge" title="Show Audio Takes">
-            <i class="fas fa-music"></i>
-            <span class="takes-count">${section.takes.length}</span>
-          </button>
-          ` : ''}
-          <button class="section-action-btn delete-section-btn" title="Delete Section">
-            <i class="fas fa-trash-alt"></i>
-          </button>
-        </div>
+      <div class="card-delete-zone">
+        <i class="fas fa-trash-alt"></i>
       </div>
-      <div class="section-content-wrapper">
-        <div class="section-content" contenteditable="true" placeholder="Start writing..."></div>
+      <div class="card-swipe-container">
+        <div class="section-card-header">
+          <div class.section-type-dropdown">
+            <button class="section-type-btn" aria-haspopup="true">
+              <span>${section.type}</span>
+              <i class="fas fa-chevron-down"></i>
+            </button>
+            <ul class="section-type-menu" role="menu">
+              ${['Verse', 'Chorus', 'Bridge', 'Intro', 'Outro', 'Pre-Chorus', 'Hook', 'Solo'].map(type => `<li><button role="menuitem">${type}</button></li>`).join('')}
+            </ul>
+          </div>
+          <div class="section-header-actions">
+            <button class="section-action-btn record-take-btn" title="Record a new take">
+                <i class="fas fa-microphone-alt"></i>
+            </button>
+            ${section.takes.length > 0 ? `
+            <button class="takes-badge" title="Show Audio Takes">
+              <i class="fas fa-music"></i>
+              <span class="takes-count">${section.takes.length}</span>
+            </button>
+            ` : ''}
+          </div>
+        </div>
+        <div class="section-content-wrapper">
+          <div class="section-content" contenteditable="true" placeholder="Start writing..."></div>
+        </div>
       </div>
     `;
 
@@ -1058,25 +1070,6 @@ class VoiceNotesApp {
       this.showTakesMenu(index, target.closest('.takes-badge')!);
     }
     
-    // Handle delete button click
-    if (target.closest('.delete-section-btn')) {
-        this.triggerHapticFeedback();
-        e.stopPropagation();
-        if (confirm('Are you sure you want to delete this section?')) {
-            this.triggerHapticFeedback([10, 40]);
-            const note = this.notes.get(this.currentNoteId!);
-            if (note && note.sections[index] !== undefined) {
-                this.updateCurrentNoteContent();
-                this.saveNoteState();
-                note.sections.splice(index, 1);
-                card.remove();
-                this.songStructureEditor.querySelectorAll<HTMLDivElement>('.song-section-card').forEach((c, i) => c.dataset.index = i.toString());
-                this.saveDataToStorage();
-                this.saveNoteState();
-            }
-        }
-    }
-
     // Handle dropdown item selection
     if (target.matches('.section-type-menu button')) {
       this.triggerHapticFeedback();
@@ -1099,6 +1092,110 @@ class VoiceNotesApp {
         card.classList.toggle('collapsed');
     }
   }
+
+  // --- Swipe To Delete ---
+  private handleCardInteractionStart = (e: MouseEvent | TouchEvent): void => {
+    const target = e.target as HTMLElement;
+    // Don't start a swipe if interacting with buttons, dropdowns, or contenteditable areas
+    if (target.closest('button, [contenteditable="true"], .section-type-dropdown')) {
+        return;
+    }
+    
+    this.currentSwipeCard = target.closest('.song-section-card');
+    if (!this.currentSwipeCard) return;
+
+    this.currentSwipeContainer = this.currentSwipeCard.querySelector('.card-swipe-container');
+    if (!this.currentSwipeContainer) return;
+
+    this.isSwiping = true;
+    this.swipeStartX = this.getPointerX(e);
+    this.swipeStartTime = Date.now();
+    
+    // Disable transition during drag
+    this.currentSwipeContainer.style.transition = 'none';
+
+    document.addEventListener('mousemove', this.handleCardInteractionMove);
+    document.addEventListener('touchmove', this.handleCardInteractionMove, { passive: false });
+    document.addEventListener('mouseup', this.handleCardInteractionEnd);
+    document.addEventListener('touchend', this.handleCardInteractionEnd);
+  }
+
+  private handleCardInteractionMove = (e: MouseEvent | TouchEvent): void => {
+      if (!this.isSwiping || !this.currentSwipeContainer) return;
+      
+      e.preventDefault();
+
+      const currentX = this.getPointerX(e);
+      let deltaX = currentX - this.swipeStartX;
+
+      // Only allow swiping left
+      if (deltaX > 0) {
+          deltaX = 0;
+      }
+
+      // Clamp the swipe distance
+      deltaX = Math.max(deltaX, this.SWIPE_THRESHOLD - 30); // Allow over-swipe a bit for feel
+
+      this.currentSwipeContainer.style.transform = `translateX(${deltaX}px)`;
+  }
+
+  private handleCardInteractionEnd = (e: MouseEvent | TouchEvent): void => {
+      if (!this.isSwiping || !this.currentSwipeCard || !this.currentSwipeContainer) return;
+
+      this.isSwiping = false;
+      const currentX = this.getPointerX(e);
+      const deltaX = currentX - this.swipeStartX;
+
+      // Re-enable transition for snap-back
+      this.currentSwipeContainer.style.transition = 'transform var(--transition-fast)';
+
+      if (deltaX < this.SWIPE_THRESHOLD) {
+          // Delete the card
+          this.deleteSectionCard(this.currentSwipeCard);
+      } else {
+          // Snap back
+          this.currentSwipeContainer.style.transform = 'translateX(0px)';
+      }
+
+      // Clean up
+      this.currentSwipeCard = null;
+      this.currentSwipeContainer = null;
+      document.removeEventListener('mousemove', this.handleCardInteractionMove);
+      document.removeEventListener('touchmove', this.handleCardInteractionMove);
+      document.removeEventListener('mouseup', this.handleCardInteractionEnd);
+      document.removeEventListener('touchend', this.handleCardInteractionEnd);
+  }
+
+  private deleteSectionCard(card: HTMLElement): void {
+      const index = parseInt(card.dataset.index!, 10);
+      const note = this.notes.get(this.currentNoteId!);
+
+      if (note && note.sections[index] !== undefined) {
+          this.updateCurrentNoteContent(); // Save state before deleting
+          this.saveNoteState();
+          
+          // Apply animation for deletion
+          card.style.transition = 'opacity 0.3s ease, max-height 0.4s ease, margin 0.4s ease, padding 0.4s ease';
+          if (card.querySelector('.card-swipe-container')) {
+              (card.querySelector('.card-swipe-container') as HTMLElement).style.transition = 'transform 0.3s ease';
+              (card.querySelector('.card-swipe-container') as HTMLElement).style.transform = `translateX(-100%)`;
+          }
+          card.style.opacity = '0';
+          card.style.maxHeight = '0px';
+          card.style.margin = '0'; // Collapse margin
+          card.style.padding = '0'; // Collapse padding
+
+          setTimeout(() => {
+              note.sections.splice(index, 1);
+              card.remove();
+              // Re-index remaining cards
+              this.songStructureEditor.querySelectorAll<HTMLDivElement>('.song-section-card').forEach((c, i) => c.dataset.index = i.toString());
+              this.saveDataToStorage();
+              this.saveNoteState(); // Save state after deleting
+          }, 400); // Match transition duration
+      }
+  }
+
 
   // --- Notes List View ---
   private renderNotesList(): void {
@@ -3066,4 +3163,270 @@ Follow these rules:
     const currentState = this.getNoteState(note);
     const lastUndoState = history.undo[history.undo.length - 1];
     
-    if (JSON
+    if (JSON.stringify(currentState) === JSON.stringify(lastUndoState)) {
+        return; // Don't save if state is identical
+    }
+
+    history.undo.push(currentState);
+    history.redo = []; // Clear redo stack on new action
+    
+    // Limit history size
+    if (history.undo.length > 50) {
+        history.undo.shift();
+    }
+    this.updateUndoRedoButtons();
+  }
+  
+  private debouncedSaveState = (): void => {
+      if (this.debounceTimer) {
+          clearTimeout(this.debounceTimer);
+      }
+      this.debounceTimer = window.setTimeout(() => {
+          this.updateCurrentNoteContent();
+          this.saveNoteState();
+      }, 800); // 800ms debounce time
+  }
+  
+  private undo(): void {
+    if (!this.currentNoteId) return;
+    const history = this.noteHistories.get(this.currentNoteId);
+    if (!history || history.undo.length <= 1) return; // Can't undo the initial state
+    
+    // Save current "dirty" state before undoing
+    this.updateCurrentNoteContent();
+
+    const currentState = history.undo.pop()!;
+    history.redo.unshift(currentState);
+
+    const prevState = history.undo[history.undo.length - 1];
+    this.applyNoteState(prevState);
+    this.updateUndoRedoButtons();
+  }
+
+  private redo(): void {
+    if (!this.currentNoteId) return;
+    const history = this.noteHistories.get(this.currentNoteId);
+    if (!history || history.redo.length === 0) return;
+
+    const nextState = history.redo.shift()!;
+    history.undo.push(nextState);
+
+    this.applyNoteState(nextState);
+    this.updateUndoRedoButtons();
+  }
+  
+  private applyNoteState(state: NoteState): void {
+      if (!this.currentNoteId) return;
+      const note = this.notes.get(this.currentNoteId);
+      if (!note) return;
+
+      note.title = state.title;
+      note.sections = state.sections;
+      note.polishedNote = state.polishedNote;
+      note.editorFormat = state.editorFormat;
+      
+      this.saveDataToStorage();
+      this.setActiveNote(this.currentNoteId); // Re-render everything
+  }
+
+  private updateUndoRedoButtons(): void {
+      if (!this.currentNoteId) {
+          this.undoButton.disabled = true;
+          this.redoButton.disabled = true;
+          return;
+      };
+      const history = this.noteHistories.get(this.currentNoteId);
+      this.undoButton.disabled = !history || history.undo.length <= 1;
+      this.redoButton.disabled = !history || history.redo.length === 0;
+  }
+
+  // --- Projects ---
+  private createProject(): void {
+    const projectName = prompt("Enter project name:");
+    if (projectName && projectName.trim() !== '') {
+        const newProject: Project = {
+            id: `proj_${Date.now()}`,
+            name: projectName.trim()
+        };
+        this.projects.set(newProject.id, newProject);
+        this.saveDataToStorage();
+        this.renderSidebar();
+    }
+  }
+  
+  private deleteProject(projectId: string): void {
+    if (!this.projects.has(projectId)) return;
+
+    // Unassign notes from this project
+    this.notes.forEach(note => {
+      if (note.projectId === projectId) {
+        note.projectId = null;
+      }
+    });
+
+    this.projects.delete(projectId);
+    this.saveDataToStorage();
+    
+    // If we were viewing this project, switch back to all notes
+    if (this.currentFilter.type === 'project' && this.currentFilter.id === projectId) {
+      this.currentFilter = { type: 'all', id: null };
+      if (this.activeView === 'list') {
+        this.renderNotesList();
+      }
+    }
+    this.renderSidebar();
+  }
+
+  private renameProject(projectId: string): void {
+    const project = this.projects.get(projectId);
+    if (!project) return;
+    const newName = prompt("Enter new project name:", project.name);
+    if (newName && newName.trim() !== '') {
+        project.name = newName.trim();
+        this.saveDataToStorage();
+        this.renderSidebar();
+        if (this.activeView === 'list' && this.currentFilter.id === projectId) {
+            this.notesListTitle.textContent = project.name;
+        }
+    }
+  }
+  
+  private filterByProject(projectId: string): void {
+      this.currentFilter = { type: 'project', id: projectId };
+      this.setActiveView('list');
+      this.renderSidebar(); // Update sidebar active state
+  }
+
+  private assignNoteToProject(projectId: string | null): void {
+    if (!this.currentNoteId) return;
+    const note = this.notes.get(this.currentNoteId);
+    if (!note) return;
+    
+    note.projectId = projectId;
+    this.saveDataToStorage();
+    this.renderProjectAssignment();
+  }
+
+  private renderProjectAssignment(): void {
+    if (!this.currentNoteId) return;
+    const note = this.notes.get(this.currentNoteId);
+    if (!note) return;
+
+    let buttonText = 'No Project';
+    if (note.projectId && this.projects.has(note.projectId)) {
+        buttonText = this.projects.get(note.projectId)!.name;
+    }
+    this.projectAssignmentText.textContent = buttonText;
+    
+    // Render menu items
+    let menuHtml = `<button class="project-assignment-menu-item" data-project-id="">No Project</button>`;
+    if (this.projects.size > 0) {
+      menuHtml += '<div class="project-assignment-menu-separator"></div>';
+      const sortedProjects = [...this.projects.values()].sort((a,b) => a.name.localeCompare(b.name));
+      menuHtml += sortedProjects.map(p => `<button class="project-assignment-menu-item" data-project-id="${p.id}">${p.name}</button>`).join('');
+    }
+    this.projectAssignmentMenu.innerHTML = menuHtml;
+  }
+  
+  // --- Keyboard Shortcuts ---
+  private handleKeyDown(e: KeyboardEvent): void {
+      // Undo/Redo
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const isCmd = isMac ? e.metaKey : e.ctrlKey;
+      
+      if (isCmd && e.key === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) {
+              this.redo();
+          } else {
+              this.undo();
+          }
+      }
+  }
+
+
+  // --- Utility Functions ---
+  private setAppHeight(): void {
+    const vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
+  }
+
+  private updatePlaceholderVisibility(element: HTMLElement): void {
+    element.setAttribute('data-placeholder-visible', String(!element.textContent?.trim()));
+  }
+  
+  private formatTime(ms: number, showMilliseconds: boolean = false): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const milliseconds = Math.floor((ms % 1000) / 10);
+    
+    const paddedSeconds = seconds < 10 ? `0${seconds}` : seconds;
+    const paddedMs = milliseconds < 10 ? `0${milliseconds}` : milliseconds;
+
+    if (showMilliseconds) {
+      return `${minutes}:${paddedSeconds}.${paddedMs}`;
+    }
+    return `${minutes}:${paddedSeconds}`;
+  }
+
+  private blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = (reader.result as string).split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  private base64ToBlob(base64: string, mimeType: string): Blob {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+  }
+
+  private getAudioDuration(url: string): Promise<number> {
+    return new Promise(resolve => {
+        const audio = new Audio();
+        audio.addEventListener('loadedmetadata', () => {
+            resolve(audio.duration * 1000); // return in ms
+        });
+        audio.src = url;
+    });
+  }
+  
+  private setFinalStatus(message: string, isError: boolean = false): void {
+      document.body.classList.remove('is-processing');
+      this.isProcessing = false;
+
+      this.recordingStatus.textContent = message;
+      this.recordingStatus.style.color = isError ? 'var(--color-recording)' : 'var(--color-success)';
+      
+      setTimeout(() => {
+          this.discardRecording(true);
+          this.recordingStatus.textContent = 'Ready to record';
+          this.recordingStatus.style.color = ''; // Reset color
+      }, isError ? 2500 : 1500);
+  }
+
+  private triggerHapticFeedback(intensity: number | number[] = 10): void {
+      if ('vibrate' in navigator) {
+        try {
+          navigator.vibrate(intensity);
+        } catch(e) {
+          // Can fail on some browsers if called too frequently
+        }
+      }
+  }
+
+}
+
+// Initialize the app
+new VoiceNotesApp();
