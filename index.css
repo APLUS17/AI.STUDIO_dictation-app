@@ -1,5 +1,3 @@
-
-
 @import url(https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css);
 @import url(https://fonts.cdnfonts.com/css/sf-mono);
 
@@ -153,7 +151,7 @@ body.light-mode {
 [contenteditable] {
   caret-color: var(--color-cursor);
 }
-[contenteditable][placeholder].placeholder-active::before {
+[contenteditable][placeholder]:empty::before {
   content: attr(placeholder);
   color: var(--color-text-tertiary);
   pointer-events: none;
@@ -863,6 +861,23 @@ body {
   color: var(--color-text);
   border-color: var(--color-accent);
 }
+
+.card-delete-zone {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 90px;
+  background-color: var(--color-recording);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 20px;
+  z-index: 0;
+  border-radius: 0 12px 12px 0;
+}
+
 
 /* --- Takes Context Menu --- */
 .takes-context-menu {
@@ -1772,8 +1787,6 @@ body.light-mode .lyriq-action-btn.active {
   display: flex;
   align-items: center;
   justify-content: center;
-  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
-  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
 }
 .lyriq-waveforms {
   position: absolute;
@@ -1781,8 +1794,6 @@ body.light-mode .lyriq-action-btn.active {
   overflow-x: scroll;
   -ms-overflow-style: none;
   scrollbar-width: none;
-  padding: 0 50%;
-  box-sizing: content-box;
   opacity: 0;
   transition: opacity var(--transition-normal);
   cursor: grab;
@@ -1798,20 +1809,26 @@ body.light-mode .lyriq-action-btn.active {
 }
 .lyriq-playhead {
   position: absolute;
-  left: 50%;
-  top: 0; bottom: 0;
+  left: 0;
+  top: 0;
+  bottom: 0;
   width: 2px;
   background-color: var(--color-text);
-  transform: translateX(-50%);
+  transform: translateX(0px);
   z-index: 5;
   pointer-events: none;
+  opacity: 0;
   transition: opacity var(--transition-fast);
+}
+.lyriq-controls-modal.has-beat .lyriq-playhead {
+  opacity: 1;
 }
 #beatWaveformCanvas, #vocalWaveformCanvas {
   position: absolute;
   left: 0;
   top: 0;
   height: 50%;
+  display: block; /* Important for canvas rendering */
 }
 #vocalWaveformCanvas { top: 50%; }
 
@@ -2026,106 +2043,115 @@ body.light-mode .lyriq-action-btn.active {
     text-align: left;
     border-radius: 6px;
     font-size: 14px;
+    font-weight: 500;
     transition: background-color var(--transition-fast);
 }
+
 .context-menu-item:hover {
-    background-color: var(--color-surface-active);
+    background-color: var(--color-surface-hover);
 }
-.context-menu-item.delete:hover {
-    background-color: rgba(255, 69, 58, 0.2);
+
+.context-menu-item.delete {
     color: var(--color-recording);
 }
+
 .context-menu-item i {
     width: 16px;
     text-align: center;
-    color: var(--color-text-secondary);
-}
-.context-menu-item.delete:hover i {
-  color: var(--color-recording);
 }
 
 .context-menu-separator {
     height: 1px;
-    background-color: var(--color-border);
-    margin: 4px 8px;
+    background: var(--color-border);
+    margin: 4px 0;
 }
 
-/* --- Responsive Design --- */
+/* Responsive Styles */
 @media (max-width: 1024px) {
+  .app-container {
+    flex-direction: column;
+  }
   .sidebar {
     position: fixed;
+    left: 0;
     top: 0;
     bottom: 0;
-    left: 0;
     z-index: 1000;
-    height: 100%;
+    margin-left: 0;
+    transform: translateX(calc(-1 * var(--sidebar-width)));
+    transition: transform var(--transition-normal);
   }
-  .app-container.sidebar-collapsed .sidebar {
-    margin-left: calc(-1 * var(--sidebar-width));
+  .app-container:not(.sidebar-collapsed) .sidebar {
+    transform: translateX(0);
   }
   .app-container:not(.sidebar-collapsed) .sidebar-backdrop {
     opacity: 1;
     pointer-events: auto;
   }
-  .sidebar-toggle-button {
-    display: flex;
+
+  .sidebar-toggle-button,
+  .lyriq-header .sidebar-toggle-button {
+    display: flex; /* Show on mobile */
   }
+
   .main-header {
-    padding: 12px 16px;
+    padding: 16px 24px;
   }
   .note-content-wrapper {
-    padding: 16px 16px 100px;
+    padding: 24px 24px 100px;
   }
-  .header-right-cluster {
-    gap: 4px;
+  .editor-title {
+      font-size: 20px;
   }
-  .action-button {
-    width: 32px;
-    height: 32px;
-    font-size: 16px;
+  .project-assignment-container { display: none; }
+  .lyriq-player-view.editor-mode .lyriq-lyrics {
+      padding: 0 24px 30vh;
   }
-  .editor-title { font-size: 20px; }
-  .project-assignment-btn {
-    padding: 4px 8px;
-    font-size: 12px;
-  }
-  .notes-list-header {
-    padding: 12px 16px;
-  }
-  .notes-list-header h1 {
-    font-size: 22px;
-  }
-  .notes-list-content {
-    padding: 16px;
-  }
-  .lyriq-header, .lyriq-song-info, .lyriq-lyrics {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-  .lyriq-song-info {
-    padding-top: 70px;
-  }
-  .lyriq-line { font-size: 18px; }
-  #lyriqSongTitle { font-size: 22px; }
-  .lyriq-peek-controls { gap: 8px; }
-  .lyriq-modal-peek-header, .lyriq-modal-expanded-content {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-  .lyriq-expanded-controls { gap: 16px; }
 }
 
-/* Fallback for browsers that don't support backdrop-filter */
-@supports not ((-webkit-backdrop-filter: none) or (backdrop-filter: none)) {
-  .recording-interface, .lyriq-controls-modal, .takes-context-menu, .context-menu {
-    background: var(--color-bg-alt);
-  }
-  .lyriq-header .sidebar-toggle-button, .lyriq-action-btn {
-     background-color: var(--color-bg-alt);
-  }
-  body.light-mode {
-    .recording-interface, .lyriq-controls-modal, .takes-context-menu, .context-menu {
-      background: var(--color-bg-alt-light);
+@media (max-width: 768px) {
+    :root {
+      --lyriq-modal-peeking-height: 80px;
+      --lyriq-modal-expanded-height: 280px;
     }
-  }
+    .header-right-cluster { display: none; }
+    .main-header {
+        justify-content: flex-start;
+    }
+    .notes-grid {
+      grid-template-columns: 1fr;
+    }
+    #lyriqSongTitle { font-size: 22px; }
+    .lyriq-line { font-size: 20px; }
+    .lyriq-peek-controls { gap: 8px; }
+    .lyriq-control-btn-scrub {
+      width: 40px;
+      height: 40px;
+      font-size: 20px;
+    }
+    .lyriq-expanded-controls { gap: 16px; }
+}
+
+/* Spinner for processing */
+.record-button.is-processing::after {
+  content: '';
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  top: 50%;
+  left: 50%;
+  margin: -16px 0 0 -16px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+body.is-processing .record-button .fa-microphone,
+body.is-processing .record-button .fa-stop {
+  opacity: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
