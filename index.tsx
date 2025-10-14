@@ -225,7 +225,7 @@ class VoiceNotesApp {
   
   private lyriqAnimationId: number | null = null;
   private readonly PIXELS_PER_SECOND = 100;
-  private readonly LYRIQ_HIGHLIGHT_OFFSET = 0.15; // 150ms lookahead for anticipation
+  private LYRIQ_HIGHLIGHT_OFFSET = 0.15; // 150ms lookahead for anticipation
   
   private isMobile: boolean = window.innerWidth <= 1024;
   
@@ -2455,6 +2455,8 @@ Follow these rules:
         if (this.lyriqVocalAudioPlayer.src) {
             this.lyriqVocalAudioPlayer.currentTime = this.lyriqAudioPlayer.currentTime;
         }
+        // Establish the time offset between the AudioContext's clock and the
+        // media element's clock. This is the key to high-precision timing.
         this.lyriqPlaybackStartTime = audioContext.currentTime - this.lyriqAudioPlayer.currentTime;
         this.lyriqAudioPlayer.play();
         if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.play();
@@ -2484,40 +2486,65 @@ Follow these rules:
     this.updatePlayheadVisuals(this.lyriqAudioPlayer.currentTime);
   }
 
+  /**
+   * Finds the index of the word that should be active at a given time.
+   * @param time The current playback time in seconds.
+   * @param words The array of TimedWord objects.
+   * @returns The index of the active word, or -1 if no word is active.
+   */
   private findWordIndexAtTime(time: number, words: TimedWord[]): number {
     if (!words || words.length === 0) {
         return -1;
     }
-    // Find the index of the last word whose start time is before or at the current time.
-    // This is more robust than a binary search for this use case as it handles gaps.
+    // A reverse linear scan is used here. For typical song lyric lengths, it is highly
+    // performant and more robust than a binary search, as it doesn't require the
+    // time data to be perfectly contiguous (i.e., it handles gaps in singing).
+    // It finds the last word whose start time has already passed.
     for (let i = words.length - 1; i >= 0; i--) {
         if (words[i].start <= time) {
             return i;
         }
     }
-    // If time is before the very first word.
+    // If the time is before the start of the very first word.
     return -1;
   }
 
+  /**
+   * Updates the visual state of lyric words based on the current playback time.
+   * This function is the core of the Karaoke-style highlighting. It is called
+   * on every animation frame but is heavily optimized to only perform DOM
+   * manipulations when the active word actually changes.
+   *
+   * @param currentTime The precise playback time in seconds from the AudioContext clock.
+   */
   private updateHighlightedWord(currentTime: number): void {
       const note = this.currentNoteId ? this.notes.get(this.currentNoteId) : null;
+      
+      // Apply a "lookahead" offset. This makes the highlighting feel more natural and
+      // anticipatory, similar to professional karaoke systems. The value is adjustable.
       const lookaheadTime = currentTime + this.LYRIQ_HIGHLIGHT_OFFSET;
   
       if (!note || !note.syncedWords || !this.lyriqWordSpans || this.lyriqWordSpans.length === 0) {
-          this.clearWordHighlight();
+          this.clearWordHighlight(); // Ensure no words are highlighted if data is missing.
           return;
       }
   
       const words = this.lyriqWordSpans;
       const newHighlightIndex = this.findWordIndexAtTime(lookaheadTime, note.syncedWords);
   
-      // Optimization: If the active word hasn't changed, do nothing.
+      // PERFORMANCE CRITICAL: This is the most important optimization. The function
+      // exits immediately if the highlighted word has not changed since the last frame,
+      // preventing any unnecessary and expensive DOM updates.
       if (newHighlightIndex === this.lyriqCurrentWordIndex) {
           return;
       }
 
-      // This is a more declarative and robust way to handle updates, especially with scrubbing.
-      // It iterates through all words and sets their state based on the new index.
+      // When the active word changes, we iterate through all word spans to set their
+      // new state (past, highlighted, or future). While updating only the old and new
+      // word spans might seem faster, this full-scan approach is more robust and
+      // declarative. It correctly handles large jumps in time (e.g., from scrubbing)
+      // without complex state management. The performance cost is negligible as this
+      // block only runs once per word change, not on every frame.
       words.forEach((span, index) => {
           if (index < newHighlightIndex) {
               span.classList.add('past-word');
@@ -2525,16 +2552,16 @@ Follow these rules:
           } else if (index === newHighlightIndex) {
               span.classList.remove('past-word');
               span.classList.add('highlighted-word');
+              // Automatically scroll the highlighted word into the center of the view.
               if (this.lyriqAutoScrollEnabled && this.lyriqIsPlaying) {
                  span.scrollIntoView({ behavior: 'smooth', block: 'center' });
               }
-          } else { // index > newHighlightIndex
-              span.classList.remove('past-word');
-              span.classList.remove('highlighted-word');
+          } else { // Word is in the future.
+              span.classList.remove('past-word', 'highlighted-word');
           }
       });
       
-      // Handle the case where playback is before the first word
+      // If scrubbing before the first word, ensure all highlights are cleared.
       if (newHighlightIndex === -1) {
            this.clearWordHighlight();
       }
@@ -3004,21 +3031,24 @@ Follow these rules:
       const newTime = pixelX / this.PIXELS_PER_SECOND;
       const finalTime = Math.min(Math.max(0, newTime), duration);
   
-      // Set the time for the audio players
+      // Set the time for the audio players for immediate seeking.
       this.lyriqAudioPlayer.currentTime = finalTime;
       if (this.lyriqVocalAudioPlayer.src) {
           this.lyriqVocalAudioPlayer.currentTime = finalTime;
       }
 
-      // Resync the AudioContext start time to the new scrubbed position
+      // CRITICAL: After seeking the <audio> element, we must immediately resynchronize
+      // the high-precision AudioContext clock offset. This ensures that if playback
+      // resumes, the animation loop will have the correct reference point.
       if (this.lyriqAudioContext) {
         this.lyriqPlaybackStartTime = this.lyriqAudioContext.currentTime - finalTime;
       }
       
-      // Manually update visuals for immediate feedback while scrubbing
+      // Manually update visuals for immediate feedback while scrubbing.
       this.updatePlayheadVisuals(finalTime);
       
-      // Update lyric highlighting if we're paused
+      // If paused, the animation loop isn't running, so we must manually update
+      // the lyric highlight to reflect the new position.
       if (!this.lyriqIsPlaying) {
         this.updateHighlightedWord(finalTime);
       }
@@ -3113,18 +3143,29 @@ Follow these rules:
     ctx.fill(path);
   }
 
+  /**
+   * Starts the high-precision animation loop for Lyriq playback.
+   * This loop is responsible for synchronizing all visual elements (playhead, lyrics)
+   * with the audio playback time. It uses `requestAnimationFrame` to ensure smooth
+   * updates that are tied to the browser's display refresh rate, preventing stuttering.
+   */
   private startLyriqAnimation(): void {
-      this.stopLyriqAnimation();
+      this.stopLyriqAnimation(); // Prevent multiple animation loops from running.
       
       const animate = () => {
+          // The loop continues as long as playback is active.
           if (!this.lyriqIsPlaying || !this.lyriqAudioContext) {
             this.stopLyriqAnimation();
             return;
           }
 
+          // CRITICAL: Use the high-resolution AudioContext clock for timing.
+          // `HTMLMediaElement.currentTime` updates infrequently and is not suitable for
+          // millisecond-level synchronization. By calculating an offset once when playback
+          // starts, we can derive the precise playback time on every frame.
           const currentTime = this.lyriqAudioContext.currentTime - this.lyriqPlaybackStartTime;
           
-          // Sync all visual updates to this high-precision clock
+          // Update all visual elements based on this single, accurate time source.
           this.updatePlayheadVisuals(currentTime);
           this.autoScrollView(currentTime);
           this.updateHighlightedWord(currentTime);
@@ -3133,11 +3174,17 @@ Follow these rules:
             this.updateDebugPanel(currentTime);
           }
 
+          // Schedule the next frame.
           this.lyriqAnimationId = requestAnimationFrame(animate);
       };
-      animate();
+      animate(); // Start the loop.
   }
 
+  /**
+   * Stops the Lyriq animation loop cleanly.
+   * This is essential to prevent unnecessary CPU usage and potential memory leaks
+   * when playback is paused, stopped, or the view is changed.
+   */
   private stopLyriqAnimation(): void {
       if (this.lyriqAnimationId) {
           cancelAnimationFrame(this.lyriqAnimationId);
