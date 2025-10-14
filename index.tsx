@@ -25,6 +25,12 @@ interface TimedWord {
     end: number;   // in seconds
 }
 
+interface TimedLine {
+  text: string;
+  start: number; // in seconds
+  end?: number;  // in seconds
+}
+
 interface NoteSection {
   type: string;
   content: string;
@@ -41,6 +47,7 @@ interface Note {
   timestamp: number;
   projectId: string | null;
   syncedWords: TimedWord[] | null;
+  syncedLines: TimedLine[] | null;
 }
 
 // State snapshot for undo/redo history
@@ -216,8 +223,8 @@ class VoiceNotesApp {
 
   private lyriqIsPlaying = false;
   private lyriqAutoScrollEnabled = true;
-  private lyriqCurrentWordIndex = -1;
-  private lyriqWordSpans: NodeListOf<HTMLSpanElement> | null = null;
+  private lyriqCurrentLineIndex = -1;
+  private lyriqLineElements: NodeListOf<HTMLParagraphElement> | null = null;
   private activeMixerTrack: MixerTrack = 'beat';
   private vocalBlobForMaster: Blob | null = null;
   private lyriqMode: 'karaoke' | 'editor' = 'editor';
@@ -732,6 +739,9 @@ class VoiceNotesApp {
             if (typeof note.syncedWords === 'undefined') {
                 note.syncedWords = null;
             }
+            if (typeof note.syncedLines === 'undefined') {
+                note.syncedLines = null;
+            }
             this.notes.set(id, note);
         });
     }
@@ -776,6 +786,7 @@ class VoiceNotesApp {
       timestamp: Date.now(),
       projectId: this.currentFilter.type === 'project' ? this.currentFilter.id : null,
       syncedWords: null,
+      syncedLines: null,
     };
     this.notes.set(newNote.id, newNote);
     
@@ -1652,7 +1663,6 @@ Follow these rules:
     if (!this.currentNoteId) return;
 
     this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Syncing lyrics...</p>';
-    this.lyriqWordSpans = null;
     this.isProcessing = true;
     this.updateLyriqControlsState();
 
@@ -1665,7 +1675,7 @@ Follow these rules:
             },
         };
 
-        const prompt = `You are an expert Speech-to-Text processor. Analyze the provided audio and transcribe all spoken vocals. Instead of returning raw text, format the entire output as a single, clean JSON array. Each item in the array must represent a word and contain three keys: "word" (the transcribed text), "start" (the start time in seconds, float), and "end" (the end time in seconds, float). Do not include any additional commentary or text outside of the final JSON array.`;
+        const prompt = `You are an expert Speech-to-Text processor. Analyze the provided audio, which contains sung vocals, and transcribe it. Your primary task is to identify natural lyrical lines or phrases. Format the entire output as a single, clean JSON array of objects. Each object in the array must represent a single lyric line and contain two keys: "text" (the transcribed text of the line) and "start" (the start time of the line in seconds, as a float). Do not include any additional commentary or text outside of the final JSON array.`;
         
         const response = await this.genAI.models.generateContent({
             model: MODEL_NAME,
@@ -1677,24 +1687,24 @@ Follow these rules:
                     items: {
                         type: Type.OBJECT,
                         properties: {
-                            word: { type: Type.STRING },
-                            start: { type: Type.NUMBER },
-                            end: { type: Type.NUMBER }
+                            text: { type: Type.STRING },
+                            start: { type: Type.NUMBER }
                         },
-                        required: ["word", "start", "end"]
+                        required: ["text", "start"]
                     }
                 }
             }
         });
 
         const jsonString = response.text;
-        const timedWords: TimedWord[] = JSON.parse(jsonString);
+        const timedLines: TimedLine[] = JSON.parse(jsonString);
         
         const note = this.notes.get(this.currentNoteId)!;
-        note.syncedWords = timedWords;
+        note.syncedLines = timedLines;
+        note.syncedWords = null; // Clear word data
         
         // Also update the note sections with the new transcription for the editor view
-        const fullText = timedWords.map(w => w.word).join(' ');
+        const fullText = timedLines.map(l => l.text).join('\n');
         note.sections = [{ type: 'Verse', content: fullText, takes: [] }];
         note.polishedNote = fullText;
         note.timestamp = Date.now();
@@ -1708,7 +1718,6 @@ Follow these rules:
     } catch (error) {
         console.error("Error syncing lyrics:", error);
         this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">Could not sync lyrics. Please try again.</p>';
-        this.lyriqWordSpans = null;
         setTimeout(() => this.loadNoteIntoLyriqPlayer(), 2000); // Revert to previous state
         this.triggerHapticFeedback([40, 30, 40]);
     } finally {
@@ -2250,6 +2259,7 @@ Follow these rules:
     // If lyrics were edited by the user, the timing data is now invalid and must be cleared.
     if (this.lyriqLyricsAreDirty) {
         note.syncedWords = null;
+        note.syncedLines = null;
         this.lyriqLyricsAreDirty = false; // Reset after clearing
     }
     
@@ -2339,12 +2349,17 @@ Follow these rules:
       this.lyriqSongTitle.textContent = note.title;
       this.lyriqModalPeekTitle.textContent = note.title;
       this.lyricsContainer.innerHTML = ''; // Clear existing
-      this.lyriqWordSpans = null; // Clear word spans cache
+      this.lyriqLineElements = null;
 
-      if (note.syncedWords && note.syncedWords.length > 0) {
-          this.renderSyncedWords(note.syncedWords);
+      if (note.syncedLines && note.syncedLines.length > 0) {
+          this.renderSyncedLines(note.syncedLines);
       } else {
-          const lyricsText = this.flattenSections(note.sections);
+          // If no syncedLines, fallback to rendering plain text from either syncedWords or sections.
+          // This removes the call to renderSyncedWords() which creates the spans for word-highlighting.
+          const lyricsText = (note.syncedWords && note.syncedWords.length > 0)
+            ? note.syncedWords.map(w => w.word).join(' ')
+            : this.flattenSections(note.sections);
+
           if (lyricsText.trim()) {
               lyricsText.split('\n').forEach(line => {
                   if (line.trim()) { // Don't create elements for empty lines between sections
@@ -2358,21 +2373,18 @@ Follow these rules:
               this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">This note has no lyrics. Try recording some vocals.</p>';
           }
       }
-      this.lyriqCurrentWordIndex = -1; // Reset word tracking
+      this.lyriqCurrentLineIndex = -1; // Reset line tracking
   }
 
-  private renderSyncedWords(words: TimedWord[]): void {
+  private renderSyncedLines(lines: TimedLine[]): void {
       this.lyricsContainer.innerHTML = '';
-      const lineEl = document.createElement('p');
-      lineEl.className = 'lyriq-line';
-      words.forEach(item => {
-          const wordEl = document.createElement('span');
-          wordEl.innerText = item.word;
-          lineEl.appendChild(wordEl);
-          lineEl.appendChild(document.createTextNode(' ')); // Add space
+      lines.forEach(line => {
+          const lineEl = document.createElement('p');
+          lineEl.className = 'lyriq-line';
+          lineEl.innerText = line.text;
+          this.lyricsContainer.appendChild(lineEl);
       });
-      this.lyricsContainer.appendChild(lineEl);
-      this.lyriqWordSpans = this.lyricsContainer.querySelectorAll('.lyriq-line span');
+      this.lyriqLineElements = this.lyricsContainer.querySelectorAll('.lyriq-line');
   }
 
   private async handleLyriqFileUpload(event: Event): Promise<void> {
@@ -2466,7 +2478,7 @@ Follow these rules:
         this.lyriqAudioPlayer.pause();
         if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.pause();
         this.stopLyriqAnimation();
-        this.clearWordHighlight();
+        this.clearLyricHighlight();
     }
   }
   
@@ -2486,95 +2498,64 @@ Follow these rules:
     this.updatePlayheadVisuals(this.lyriqAudioPlayer.currentTime);
   }
 
-  /**
-   * Finds the index of the word that should be active at a given time.
-   * @param time The current playback time in seconds.
-   * @param words The array of TimedWord objects.
-   * @returns The index of the active word, or -1 if no word is active.
-   */
-  private findWordIndexAtTime(time: number, words: TimedWord[]): number {
-    if (!words || words.length === 0) {
-        return -1;
-    }
-    // A reverse linear scan is used here. For typical song lyric lengths, it is highly
-    // performant and more robust than a binary search, as it doesn't require the
-    // time data to be perfectly contiguous (i.e., it handles gaps in singing).
-    // It finds the last word whose start time has already passed.
-    for (let i = words.length - 1; i >= 0; i--) {
-        if (words[i].start <= time) {
-            return i;
-        }
-    }
-    // If the time is before the start of the very first word.
-    return -1;
+  private findLineIndexAtTime(time: number, lines: TimedLine[]): number {
+      if (!lines || lines.length === 0) {
+          return -1;
+      }
+      for (let i = lines.length - 1; i >= 0; i--) {
+          if (lines[i].start <= time) {
+              if (lines[i].end && time > lines[i].end!) {
+                  continue;
+              }
+              return i;
+          }
+      }
+      return -1;
   }
 
-  /**
-   * Updates the visual state of lyric words based on the current playback time.
-   * This function is the core of the Karaoke-style highlighting. It is called
-   * on every animation frame but is heavily optimized to only perform DOM
-   * manipulations when the active word actually changes.
-   *
-   * @param currentTime The precise playback time in seconds from the AudioContext clock.
-   */
-  private updateHighlightedWord(currentTime: number): void {
+  private updateHighlightedLine(currentTime: number): void {
       const note = this.currentNoteId ? this.notes.get(this.currentNoteId) : null;
-      
-      // Apply a "lookahead" offset. This makes the highlighting feel more natural and
-      // anticipatory, similar to professional karaoke systems. The value is adjustable.
       const lookaheadTime = currentTime + this.LYRIQ_HIGHLIGHT_OFFSET;
   
-      if (!note || !note.syncedWords || !this.lyriqWordSpans || this.lyriqWordSpans.length === 0) {
-          this.clearWordHighlight(); // Ensure no words are highlighted if data is missing.
+      if (!note || !note.syncedLines || !this.lyriqLineElements || this.lyriqLineElements.length === 0) {
+          this.clearLyricHighlight();
           return;
       }
   
-      const words = this.lyriqWordSpans;
-      const newHighlightIndex = this.findWordIndexAtTime(lookaheadTime, note.syncedWords);
+      const lines = this.lyriqLineElements;
+      const newHighlightIndex = this.findLineIndexAtTime(lookaheadTime, note.syncedLines);
   
-      // PERFORMANCE CRITICAL: This is the most important optimization. The function
-      // exits immediately if the highlighted word has not changed since the last frame,
-      // preventing any unnecessary and expensive DOM updates.
-      if (newHighlightIndex === this.lyriqCurrentWordIndex) {
+      if (newHighlightIndex === this.lyriqCurrentLineIndex) {
           return;
       }
-
-      // When the active word changes, we iterate through all word spans to set their
-      // new state (past, highlighted, or future). While updating only the old and new
-      // word spans might seem faster, this full-scan approach is more robust and
-      // declarative. It correctly handles large jumps in time (e.g., from scrubbing)
-      // without complex state management. The performance cost is negligible as this
-      // block only runs once per word change, not on every frame.
-      words.forEach((span, index) => {
+  
+      lines.forEach((line, index) => {
           if (index < newHighlightIndex) {
-              span.classList.add('past-word');
-              span.classList.remove('highlighted-word');
+              line.classList.add('past-line');
+              line.classList.remove('highlighted-line');
           } else if (index === newHighlightIndex) {
-              span.classList.remove('past-word');
-              span.classList.add('highlighted-word');
-              // Automatically scroll the highlighted word into the center of the view.
+              line.classList.remove('past-line');
+              line.classList.add('highlighted-line');
               if (this.lyriqAutoScrollEnabled && this.lyriqIsPlaying) {
-                 span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                 line.scrollIntoView({ behavior: 'smooth', block: 'center' });
               }
-          } else { // Word is in the future.
-              span.classList.remove('past-word', 'highlighted-word');
+          } else {
+              line.classList.remove('past-line', 'highlighted-line');
           }
       });
       
-      // If scrubbing before the first word, ensure all highlights are cleared.
       if (newHighlightIndex === -1) {
-           this.clearWordHighlight();
+           this.clearLyricHighlight();
       }
   
-      this.lyriqCurrentWordIndex = newHighlightIndex;
+      this.lyriqCurrentLineIndex = newHighlightIndex;
   }
 
-  private clearWordHighlight(): void {
-      this.lyriqWordSpans?.forEach(span => {
-          const el = span as HTMLElement;
-          el.classList.remove('highlighted-word', 'past-word');
+  private clearLyricHighlight(): void {
+      this.lyriqLineElements?.forEach(line => {
+          line.classList.remove('highlighted-line', 'past-line');
       });
-      this.lyriqCurrentWordIndex = -1;
+      this.lyriqCurrentLineIndex = -1;
   }
 
   private handleLyriqEnded(): void {
@@ -2583,7 +2564,7 @@ Follow these rules:
       this.toggleLyriqRecording();
     }
     this.stopLyriqAnimation();
-    this.clearWordHighlight();
+    this.clearLyricHighlight();
     const expandedIcon = this.lyriqExpandedPlayBtn.querySelector('i');
     if (expandedIcon) expandedIcon.className = 'fas fa-play';
     const peekIcon = this.lyriqModalPeekPlayBtn.querySelector('i');
@@ -3050,7 +3031,7 @@ Follow these rules:
       // If paused, the animation loop isn't running, so we must manually update
       // the lyric highlight to reflect the new position.
       if (!this.lyriqIsPlaying) {
-        this.updateHighlightedWord(finalTime);
+        this.updateHighlightedLine(finalTime);
       }
   }
 
@@ -3168,7 +3149,10 @@ Follow these rules:
           // Update all visual elements based on this single, accurate time source.
           this.updatePlayheadVisuals(currentTime);
           this.autoScrollView(currentTime);
-          this.updateHighlightedWord(currentTime);
+          
+          // Always use line-by-line highlighting as requested.
+          // The updateHighlightedLine method has its own internal checks for data availability.
+          this.updateHighlightedLine(currentTime);
           
           if (this.lyriqDebugMode) {
             this.updateDebugPanel(currentTime);
@@ -3228,13 +3212,13 @@ Follow these rules:
       const contextTime = this.lyriqAudioContext.currentTime;
       
       this.debugTime.textContent = `Anim: ${currentTime.toFixed(3)}s | Audio: ${audioTime.toFixed(3)}s | Ctx: ${contextTime.toFixed(3)}s`;
-      this.debugWordIndex.textContent = this.lyriqCurrentWordIndex.toString();
+      this.debugWordIndex.textContent = this.lyriqCurrentLineIndex.toString();
       
       const note = this.currentNoteId ? this.notes.get(this.currentNoteId) : null;
-      if (note && note.syncedWords && this.lyriqCurrentWordIndex !== -1) {
-          const word = note.syncedWords[this.lyriqCurrentWordIndex];
-          if (word) {
-              this.debugWordTime.textContent = `${word.start.toFixed(3)} - ${word.end.toFixed(3)}`;
+      if (note && note.syncedLines && this.lyriqCurrentLineIndex !== -1) {
+          const line = note.syncedLines[this.lyriqCurrentLineIndex];
+          if (line) {
+              this.debugWordTime.textContent = `${line.start.toFixed(3)}`;
           } else {
               this.debugWordTime.textContent = 'N/A';
           }
