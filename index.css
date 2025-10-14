@@ -98,7 +98,7 @@
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
   --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.45s cubic-bezier(0.50, 0, 0.20, 1);
   --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-tabs: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
@@ -1467,23 +1467,30 @@ body.light-mode .lyriq-action-btn.active {
   line-height: 1.5;
   color: var(--color-text-tertiary);
   margin-bottom: 16px;
-  transition: color var(--transition-normal), transform var(--transition-normal), background-color var(--transition-normal), opacity var(--transition-normal);
+  transition: 
+    color var(--transition-normal), 
+    transform var(--transition-normal), 
+    background-color var(--transition-normal), 
+    opacity var(--transition-normal),
+    text-shadow var(--transition-normal);
   border-radius: 8px;
   padding: 4px 8px;
 }
 
 .lyriq-line.past-line {
-  color: var(--color-text);
-  transform: scale(0.98);
-  opacity: 0.8;
+  color: var(--color-text-secondary);
+  background: transparent;
+  transform: scale(1);
+  text-shadow: none;
 }
 
 .lyriq-line.highlighted-line {
-  color: var(--color-bg);
+  color: #fff;
   background-color: var(--color-accent);
-  transform: scale(1.02);
+  font-weight: bold;
+  transform: scale(1.035);
   opacity: 1;
-  text-shadow: 0 0 10px var(--color-accent);
+  text-shadow: 0 2px 8px var(--color-accent), 0 0 1.5px #fff;
 }
 
 .lyriq-line.placeholder {
