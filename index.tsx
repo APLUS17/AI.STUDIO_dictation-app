@@ -2430,38 +2430,42 @@ Follow these rules:
   }
 
   private toggleLyriqPlayback(): void {
-      if (!this.lyriqAudioPlayer.src) return;
-  
-      const audioContext = this.initLyriqAudioContext();
-      if (!audioContext) {
-          console.error("AudioContext is not available for playback.");
-          return;
-      }
+    if (!this.lyriqAudioPlayer.src) return;
 
-      const iconClass = this.lyriqIsPlaying ? 'fas fa-play' : 'fas fa-pause';
-      
-      const expandedIcon = this.lyriqExpandedPlayBtn.querySelector('i');
-      if (expandedIcon) expandedIcon.className = iconClass;
-      
-      const peekIcon = this.lyriqModalPeekPlayBtn.querySelector('i');
-      if (peekIcon) peekIcon.className = iconClass;
+    const audioContext = this.initLyriqAudioContext();
+    if (!audioContext) {
+        console.error("AudioContext is not available for playback.");
+        return;
+    }
 
-      if (this.lyriqIsPlaying) {
-          this.lyriqAudioPlayer.pause();
-          if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.pause();
-          this.stopLyriqAnimation();
-          this.clearWordHighlight();
-      } else {
-          // Sync vocal track to beat track before playing
-          if (this.lyriqVocalAudioPlayer.src) {
-              this.lyriqVocalAudioPlayer.currentTime = this.lyriqAudioPlayer.currentTime;
-          }
-          this.lyriqPlaybackStartTime = audioContext.currentTime - this.lyriqAudioPlayer.currentTime;
-          this.lyriqAudioPlayer.play();
-          if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.play();
-          this.startLyriqAnimation();
-      }
-      this.lyriqIsPlaying = !this.lyriqIsPlaying;
+    // Toggle state immediately to fix race condition with animation loop
+    this.lyriqIsPlaying = !this.lyriqIsPlaying;
+
+    const iconClass = this.lyriqIsPlaying ? 'fas fa-pause' : 'fas fa-play';
+    
+    const expandedIcon = this.lyriqExpandedPlayBtn.querySelector('i');
+    if (expandedIcon) expandedIcon.className = iconClass;
+    
+    const peekIcon = this.lyriqModalPeekPlayBtn.querySelector('i');
+    if (peekIcon) peekIcon.className = iconClass;
+
+    if (this.lyriqIsPlaying) {
+        // PLAY LOGIC
+        // Sync vocal track to beat track before playing
+        if (this.lyriqVocalAudioPlayer.src) {
+            this.lyriqVocalAudioPlayer.currentTime = this.lyriqAudioPlayer.currentTime;
+        }
+        this.lyriqPlaybackStartTime = audioContext.currentTime - this.lyriqAudioPlayer.currentTime;
+        this.lyriqAudioPlayer.play();
+        if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.play();
+        this.startLyriqAnimation();
+    } else {
+        // PAUSE LOGIC
+        this.lyriqAudioPlayer.pause();
+        if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.pause();
+        this.stopLyriqAnimation();
+        this.clearWordHighlight();
+    }
   }
   
   private handleRewind = (): void => {
