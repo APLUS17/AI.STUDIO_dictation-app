@@ -1412,7 +1412,6 @@ body.recording-modal-active .editor-fab-container {
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(10px);
 }
-.lyriq-header-actions { display: flex; gap: 8px; }
 .lyriq-action-btn {
   width: 36px; height: 36px;
   background-color: var(--glass-bg);
@@ -1439,6 +1438,10 @@ body.light-mode .lyriq-action-btn.active {
 .lyriq-song-info {
   text-align: center;
   padding: 80px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
 }
 #lyriqSongTitle {
   font-size: 28px;
@@ -1472,7 +1475,7 @@ body.light-mode .lyriq-action-btn.active {
   margin: 0 -4px;
   border-radius: 4px;
   color: var(--color-text-tertiary);
-  transition: none; /* Ensure highlighting is instant */
+  transition: color 0.05s ease-out, background-color 0.05s ease-out;
 }
 
 .lyriq-line .past-word {
@@ -1489,6 +1492,22 @@ body.light-mode .lyriq-action-btn.active {
   color: var(--color-text-tertiary);
   font-style: italic;
   font-weight: 400;
+}
+
+.lyriq-debug-panel {
+  position: absolute;
+  top: 80px;
+  right: 24px;
+  background: rgba(0,0,0,0.75);
+  color: #00ff00;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 8px 12px;
+  border-radius: 6px;
+  z-index: 1000;
+  pointer-events: none;
+  border: 1px solid rgba(0,255,0,0.3);
 }
 
 /* Lyriq Editor Mode */

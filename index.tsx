@@ -160,7 +160,6 @@ class VoiceNotesApp {
   private lyriqPlayerView: HTMLDivElement;
   private lyriqPlayerButton: HTMLAnchorElement;
   private lyriqSidebarToggleButton: HTMLButtonElement;
-  private lyriqToggleScrollBtn: HTMLButtonElement;
   private lyriqModeToggleBtn: HTMLButtonElement;
   private audioUploadInput: HTMLInputElement;
   private lyriqAudioPlayer: HTMLAudioElement;
@@ -226,9 +225,15 @@ class VoiceNotesApp {
   
   private lyriqAnimationId: number | null = null;
   private readonly PIXELS_PER_SECOND = 100;
-  private readonly LYRIQ_HIGHLIGHT_OFFSET = 0.03; // 30ms lookahead for anticipation
+  private readonly LYRIQ_HIGHLIGHT_OFFSET = 0.15; // 150ms lookahead for anticipation
   
   private isMobile: boolean = window.innerWidth <= 1024;
+  
+  // High-precision timing properties
+  private lyriqAudioContext: AudioContext | null = null;
+  private lyriqBeatSourceNode: MediaElementAudioSourceNode | null = null;
+  private lyriqVocalSourceNode: MediaElementAudioSourceNode | null = null;
+  private lyriqPlaybackStartTime: number = 0;
   private lyriqDebugMode = false;
 
   // Debug panel elements
@@ -318,7 +323,6 @@ class VoiceNotesApp {
     this.lyriqPlayerView = document.querySelector('.lyriq-player-view') as HTMLDivElement;
     this.lyriqPlayerButton = document.getElementById('lyriqPlayerButton') as HTMLAnchorElement;
     this.lyriqSidebarToggleButton = document.getElementById('lyriqSidebarToggleButton') as HTMLButtonElement;
-    this.lyriqToggleScrollBtn = document.getElementById('lyriqToggleScrollBtn') as HTMLButtonElement;
     this.lyriqModeToggleBtn = document.getElementById('lyriqModeToggleBtn') as HTMLButtonElement;
     this.audioUploadInput = document.getElementById('audioUpload') as HTMLInputElement;
     this.lyriqAudioPlayer = document.getElementById('lyriqAudio') as HTMLAudioElement;
@@ -376,7 +380,6 @@ class VoiceNotesApp {
     this.loadDataFromStorage();
     this.setActiveMixerTrack('beat');
     this.updateLyriqControlsState();
-    this.lyriqToggleScrollBtn.classList.toggle('active', this.lyriqAutoScrollEnabled);
 
     // Initialize app state
     (async () => {
@@ -419,7 +422,7 @@ class VoiceNotesApp {
     });
     // Context menu for projects
     this.projectsList.addEventListener('contextmenu', (e) => this.handleProjectContextMenu(e));
-    this.projectsList.addEventListener('touchstart', (e) => this.handleProjectTouchStart(e), { passive: false });
+    this.projectsList.addEventListener('touchstart', (e) => this.handleProjectTouchStart(e as TouchEvent), { passive: false });
     this.projectsList.addEventListener('touchend', () => this.handleNoteTouchEnd()); // Can reuse note's touchend
     this.projectsList.addEventListener('touchmove', () => this.handleNoteTouchEnd());
 
@@ -512,7 +515,6 @@ class VoiceNotesApp {
         this.setActiveView('lyriq');
     });
     this.lyriqSidebarToggleButton.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleSidebar(); });
-    this.lyriqToggleScrollBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleLyriqAutoScroll(); });
     this.lyriqModeToggleBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleLyriqMode(); });
     this.audioUploadInput.addEventListener('change', (e) => this.handleLyriqFileUpload(e as Event));
     this.lyriqInitialAddBeatBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.audioUploadInput.click(); });
@@ -530,7 +532,6 @@ class VoiceNotesApp {
     
     this.lyriqAudioPlayer.addEventListener('loadedmetadata', () => this.handleLyriqMetadataLoaded());
     this.lyriqAudioPlayer.addEventListener('ended', () => this.handleLyriqEnded());
-    this.lyriqAudioPlayer.addEventListener('timeupdate', this.handleLyriqTimeUpdate);
     
     // Lyriq Mixer Controls
     this.lyriqExpandedAddBeatBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.handleBeatButtonClick(); });
@@ -2151,6 +2152,48 @@ Follow these rules:
 
 
   // --- Lyriq Player ---
+  private getLyriqAudioContext(): AudioContext | null {
+    if (!this.lyriqAudioContext || this.lyriqAudioContext.state === 'closed') {
+      try {
+        this.lyriqAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      } catch (e) {
+        console.error("Failed to create AudioContext for Lyriq", e);
+        return null;
+      }
+    }
+    if (this.lyriqAudioContext.state === 'suspended') {
+      this.lyriqAudioContext.resume().catch(e => console.error("Error resuming Lyriq audio context", e));
+    }
+    return this.lyriqAudioContext;
+  }
+
+  private initLyriqAudioContext(): AudioContext | null {
+      const audioContext = this.getLyriqAudioContext();
+      if (!audioContext) return null;
+
+      if (this.lyriqAudioPlayer && !this.lyriqBeatSourceNode) {
+          try {
+              this.lyriqBeatSourceNode = audioContext.createMediaElementSource(this.lyriqAudioPlayer);
+              this.lyriqBeatSourceNode.connect(audioContext.destination);
+          } catch (e) {
+              if ((e as Error).name !== 'InvalidStateError') {
+                  console.warn("Could not create beat source node", e);
+              }
+          }
+      }
+      if (this.lyriqVocalAudioPlayer && !this.lyriqVocalSourceNode) {
+          try {
+              this.lyriqVocalSourceNode = audioContext.createMediaElementSource(this.lyriqVocalAudioPlayer);
+              this.lyriqVocalSourceNode.connect(audioContext.destination);
+          } catch (e) {
+               if ((e as Error).name !== 'InvalidStateError') {
+                  console.warn("Could not create vocal source node", e);
+               }
+          }
+      }
+      return audioContext;
+  }
+
   private toggleLyriqMode(): void {
       this.lyriqMode = this.lyriqMode === 'karaoke' ? 'editor' : 'karaoke';
       this.lyriqLyricsAreDirty = false; // Reset dirty flag on every toggle
@@ -2389,6 +2432,12 @@ Follow these rules:
   private toggleLyriqPlayback(): void {
       if (!this.lyriqAudioPlayer.src) return;
   
+      const audioContext = this.initLyriqAudioContext();
+      if (!audioContext) {
+          console.error("AudioContext is not available for playback.");
+          return;
+      }
+
       const iconClass = this.lyriqIsPlaying ? 'fas fa-play' : 'fas fa-pause';
       
       const expandedIcon = this.lyriqExpandedPlayBtn.querySelector('i');
@@ -2407,6 +2456,7 @@ Follow these rules:
           if (this.lyriqVocalAudioPlayer.src) {
               this.lyriqVocalAudioPlayer.currentTime = this.lyriqAudioPlayer.currentTime;
           }
+          this.lyriqPlaybackStartTime = audioContext.currentTime - this.lyriqAudioPlayer.currentTime;
           this.lyriqAudioPlayer.play();
           if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.play();
           this.startLyriqAnimation();
@@ -2434,28 +2484,14 @@ Follow these rules:
     if (!words || words.length === 0) {
         return -1;
     }
-
-    // Since playback is sequential, we can often start searching near the last highlighted word.
-    // However, for robustness with seeking, a full binary search is better.
-    // It looks for a word where time is between start and end.
-
-    let low = 0;
-    let high = words.length - 1;
-
-    while (low <= high) {
-        const mid = Math.floor(low + (high - low) / 2);
-        const word = words[mid];
-
-        if (time >= word.start && time < word.end) {
-            return mid; // Found the active word.
-        } else if (time < word.start) {
-            high = mid - 1; // The target is in the left half.
-        } else { // time >= word.end
-            low = mid + 1; // The target is in the right half.
+    // Find the index of the last word whose start time is before or at the current time.
+    // This is more robust than a binary search for this use case as it handles gaps.
+    for (let i = words.length - 1; i >= 0; i--) {
+        if (words[i].start <= time) {
+            return i;
         }
     }
-
-    // If the loop completes without finding a word, it means we are in a gap.
+    // If time is before the very first word.
     return -1;
   }
 
@@ -2476,23 +2512,27 @@ Follow these rules:
           return;
       }
 
-      const oldHighlightIndex = this.lyriqCurrentWordIndex;
-
-      // Remove highlight from the previously active word, if there was one.
-      if (oldHighlightIndex !== -1 && oldHighlightIndex < words.length) {
-          words[oldHighlightIndex].classList.remove('highlighted-word');
-          words[oldHighlightIndex].classList.add('past-word');
-      }
-
-      // Add highlight to the new active word, if there is one.
-      if (newHighlightIndex !== -1) {
-          const newWordEl = words[newHighlightIndex];
-          newWordEl.classList.add('highlighted-word');
-          newWordEl.classList.remove('past-word');
-          
-          if (this.lyriqAutoScrollEnabled) {
-            newWordEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // This is a more declarative and robust way to handle updates, especially with scrubbing.
+      // It iterates through all words and sets their state based on the new index.
+      words.forEach((span, index) => {
+          if (index < newHighlightIndex) {
+              span.classList.add('past-word');
+              span.classList.remove('highlighted-word');
+          } else if (index === newHighlightIndex) {
+              span.classList.remove('past-word');
+              span.classList.add('highlighted-word');
+              if (this.lyriqAutoScrollEnabled && this.lyriqIsPlaying) {
+                 span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+          } else { // index > newHighlightIndex
+              span.classList.remove('past-word');
+              span.classList.remove('highlighted-word');
           }
+      });
+      
+      // Handle the case where playback is before the first word
+      if (newHighlightIndex === -1) {
+           this.clearWordHighlight();
       }
   
       this.lyriqCurrentWordIndex = newHighlightIndex;
@@ -2512,6 +2552,7 @@ Follow these rules:
       this.toggleLyriqRecording();
     }
     this.stopLyriqAnimation();
+    this.clearWordHighlight();
     const expandedIcon = this.lyriqExpandedPlayBtn.querySelector('i');
     if (expandedIcon) expandedIcon.className = 'fas fa-play';
     const peekIcon = this.lyriqModalPeekPlayBtn.querySelector('i');
@@ -2523,11 +2564,6 @@ Follow these rules:
     this.updatePlayheadVisuals(0);
   }
   
-  private toggleLyriqAutoScroll(): void {
-    this.lyriqAutoScrollEnabled = !this.lyriqAutoScrollEnabled;
-    this.lyriqToggleScrollBtn.classList.toggle('active', this.lyriqAutoScrollEnabled);
-  }
-
   private setActiveMixerTrack(track: MixerTrack): void {
       this.activeMixerTrack = track;
       this.lyriqExpandedAddBeatBtn.classList.toggle('active', track === 'beat');
@@ -2707,10 +2743,11 @@ Follow these rules:
       
       if (!projectId) return;
       
+      const touch = e.touches[0];
+      
       this.longPressTimer = window.setTimeout(() => {
           this.triggerHapticFeedback(50);
           e.preventDefault(); // Prevent scrolling and other default actions
-          const touch = e.touches[0];
           this.handleProjectContextMenu({
               preventDefault: () => {},
               stopPropagation: () => {},
@@ -2730,10 +2767,11 @@ Follow these rules:
       
       if (!noteId) return;
       
+      const touch = e.touches[0];
+
       this.longPressTimer = window.setTimeout(() => {
           this.triggerHapticFeedback(50);
           e.preventDefault(); // Prevent scrolling and other default actions
-          const touch = e.touches[0];
           this.showNoteContextMenu({
               preventDefault: () => {},
               stopPropagation: () => {},
@@ -2876,11 +2914,17 @@ Follow these rules:
   }
 
   private getPointerY(e: MouseEvent | TouchEvent): number {
-    return e.type.startsWith('touch') ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+    if (e instanceof TouchEvent) {
+      return e.changedTouches[0].clientY;
+    }
+    return (e as MouseEvent).clientY;
   }
   
   private getPointerX(e: MouseEvent | TouchEvent): number {
-    return e.type.startsWith('touch') ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
+    if (e instanceof TouchEvent) {
+      return e.changedTouches[0].clientX;
+    }
+    return (e as MouseEvent).clientX;
   }
 
   // --- Recording Modal Interaction ---
@@ -2951,15 +2995,6 @@ Follow these rules:
       // Time is the source of truth, so we do nothing here to avoid conflicts.
   }
     
-  private handleLyriqTimeUpdate = (): void => {
-      if (this.lyriqIsPlaying && !this.isScrubbing) {
-          const currentTime = this.lyriqAudioPlayer.currentTime;
-          this.updatePlayheadVisuals(currentTime);
-          this.autoScrollView(currentTime);
-          this.updateHighlightedWord(currentTime);
-      }
-  }
-  
   private handleWaveformScrub(pixelX: number): void {
       const duration = this.lyriqAudioPlayer.duration || (this.beatAudioBuffer?.duration || 0);
       const newTime = pixelX / this.PIXELS_PER_SECOND;
@@ -2969,6 +3004,11 @@ Follow these rules:
       this.lyriqAudioPlayer.currentTime = finalTime;
       if (this.lyriqVocalAudioPlayer.src) {
           this.lyriqVocalAudioPlayer.currentTime = finalTime;
+      }
+
+      // Resync the AudioContext start time to the new scrubbed position
+      if (this.lyriqAudioContext) {
+        this.lyriqPlaybackStartTime = this.lyriqAudioContext.currentTime - finalTime;
       }
       
       // Manually update visuals for immediate feedback while scrubbing
@@ -3073,9 +3113,16 @@ Follow these rules:
       this.stopLyriqAnimation();
       
       const animate = () => {
-          // The timeupdate event now handles playhead/scroll updates.
-          // This animation frame is now only for lyric highlighting.
-          const currentTime = this.lyriqAudioPlayer.currentTime;
+          if (!this.lyriqIsPlaying || !this.lyriqAudioContext) {
+            this.stopLyriqAnimation();
+            return;
+          }
+
+          const currentTime = this.lyriqAudioContext.currentTime - this.lyriqPlaybackStartTime;
+          
+          // Sync all visual updates to this high-precision clock
+          this.updatePlayheadVisuals(currentTime);
+          this.autoScrollView(currentTime);
           this.updateHighlightedWord(currentTime);
           
           if (this.lyriqDebugMode) {
@@ -3124,9 +3171,12 @@ Follow these rules:
   }
 
   private updateDebugPanel(currentTime: number): void {
-      if (!this.lyriqDebugPanel || !this.debugTime) return; // Guard
+      if (!this.lyriqDebugPanel || !this.debugTime || !this.lyriqAudioContext) return; // Guard
       
-      this.debugTime.textContent = currentTime.toFixed(3);
+      const audioTime = this.lyriqAudioPlayer.currentTime;
+      const contextTime = this.lyriqAudioContext.currentTime;
+      
+      this.debugTime.textContent = `Anim: ${currentTime.toFixed(3)}s | Audio: ${audioTime.toFixed(3)}s | Ctx: ${contextTime.toFixed(3)}s`;
       this.debugWordIndex.textContent = this.lyriqCurrentWordIndex.toString();
       
       const note = this.currentNoteId ? this.notes.get(this.currentNoteId) : null;
@@ -3341,6 +3391,13 @@ Follow these rules:
           } else {
               this.undo();
           }
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.altKey && e.key === 'd') {
+        e.preventDefault();
+        this.lyriqDebugMode = !this.lyriqDebugMode;
+        this.lyriqDebugPanel.style.display = this.lyriqDebugMode ? 'block' : 'none';
+        console.log(`Lyriq debug mode is now ${this.lyriqDebugMode ? 'ON' : 'OFF'}`);
       }
   }
 
