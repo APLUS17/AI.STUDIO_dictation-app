@@ -27,6 +27,7 @@ interface TimedWord {
 
 interface TimedLine {
   text: string;
+  editedText?: string;
   start: number; // in seconds
   end?: number;  // in seconds
 }
@@ -2239,32 +2240,50 @@ Follow these rules:
   }
 
   private updateNoteFromLyriqEditor = (): void => {
-    if (!this.currentNoteId || this.lyriqMode !== 'editor') return;
-    const note = this.notes.get(this.currentNoteId);
-    if (!note) return;
+      if (!this.currentNoteId || this.lyriqMode !== 'editor') return;
+      const note = this.notes.get(this.currentNoteId);
+      if (!note) return;
 
-    const newText = this.lyricsContainer.innerText;
+      const newText = this.lyricsContainer.innerText;
 
-    // Check if the text has actually changed to avoid unnecessary saves
-    const currentText = this.flattenSections(note.sections);
-    if (currentText === newText) {
-        return;
-    }
+      const currentTextInEditor = (note.syncedLines && note.syncedLines.length > 0)
+          ? note.syncedLines.map(l => l.editedText || l.text).join('\n')
+          : this.flattenSections(note.sections);
 
-    note.polishedNote = newText;
-    // A simple way to update sections from flat text
-    note.sections = [{ type: 'Verse', content: newText, takes: [] }];
-    note.timestamp = Date.now();
-    
-    // If lyrics were edited by the user, the timing data is now invalid and must be cleared.
-    if (this.lyriqLyricsAreDirty) {
-        note.syncedWords = null;
-        note.syncedLines = null;
-        this.lyriqLyricsAreDirty = false; // Reset after clearing
-    }
-    
-    this.saveDataToStorage();
-    // Do not save to undo/redo history from here to prevent spamming the history stack.
+      if (currentTextInEditor === newText) {
+          return;
+      }
+
+      note.polishedNote = newText;
+      note.sections = [{ type: 'Verse', content: newText, takes: [] }];
+      note.timestamp = Date.now();
+      
+      if (this.lyriqLyricsAreDirty && note.syncedLines) {
+          const newLines = newText.split('\n');
+          
+          // If the number of lines has changed, the timing data is no longer valid.
+          if (newLines.length !== note.syncedLines.length) {
+              console.warn('Lyric line count changed. Detaching sync data.');
+              note.syncedLines = null;
+              note.syncedWords = null; // Also clear word-level sync
+          } else {
+              // Line count is the same, update the text but keep the timing.
+              note.syncedLines.forEach((line, index) => {
+                  const newLineText = newLines[index];
+                  if (newLineText !== undefined) {
+                      if (newLineText.trim() !== line.text.trim()) {
+                          line.editedText = newLineText;
+                      } else {
+                          // If the text is reverted to original, clear the edit flag
+                          delete line.editedText;
+                      }
+                  }
+              });
+          }
+          this.lyriqLyricsAreDirty = false;
+      }
+      
+      this.saveDataToStorage();
   }
 
   private updateLyriqControlsState(): void {
@@ -2354,11 +2373,7 @@ Follow these rules:
       if (note.syncedLines && note.syncedLines.length > 0) {
           this.renderSyncedLines(note.syncedLines);
       } else {
-          // If no syncedLines, fallback to rendering plain text from either syncedWords or sections.
-          // This removes the call to renderSyncedWords() which creates the spans for word-highlighting.
-          const lyricsText = (note.syncedWords && note.syncedWords.length > 0)
-            ? note.syncedWords.map(w => w.word).join(' ')
-            : this.flattenSections(note.sections);
+          const lyricsText = this.flattenSections(note.sections);
 
           if (lyricsText.trim()) {
               lyricsText.split('\n').forEach(line => {
@@ -2381,7 +2396,33 @@ Follow these rules:
       lines.forEach(line => {
           const lineEl = document.createElement('p');
           lineEl.className = 'lyriq-line';
-          lineEl.innerText = line.text;
+  
+          const originalText = line.text;
+          const editedText = line.editedText;
+  
+          if (this.lyriqMode === 'editor' || !editedText) {
+              lineEl.innerText = editedText ?? originalText;
+          } else {
+              const originalWords = originalText.split(' ');
+              const editedWords = editedText.split(' ');
+              let html = '';
+              const maxWords = Math.max(originalWords.length, editedWords.length);
+  
+              for (let i = 0; i < maxWords; i++) {
+                  const originalWord = originalWords[i];
+                  const editedWord = editedWords[i];
+  
+                  if (editedWord === undefined) {
+                      // Word was deleted, do nothing
+                  } else if (originalWord !== editedWord) {
+                      html += `<span class="edited-word">${editedWord}</span> `;
+                  } else {
+                      html += `${editedWord} `;
+                  }
+              }
+              lineEl.innerHTML = html.trim();
+          }
+          
           this.lyricsContainer.appendChild(lineEl);
       });
       this.lyriqLineElements = this.lyricsContainer.querySelectorAll('.lyriq-line');
@@ -2537,7 +2578,7 @@ Follow these rules:
               line.classList.remove('past-line');
               line.classList.add('highlighted-line');
               if (this.lyriqAutoScrollEnabled && this.lyriqIsPlaying) {
-                 line.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                 line.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
               }
           } else {
               line.classList.remove('past-line', 'highlighted-line');

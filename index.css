@@ -1456,7 +1456,7 @@ body.light-mode .lyriq-action-btn.active {
 .lyriq-lyrics {
   flex: 1;
   overflow-y: auto;
-  padding: 0 24px 30vh; /* Space at bottom for modal */
+  padding: 0 24px calc(var(--lyriq-modal-expanded-height) + 24px);
   scroll-padding-top: 40vh;
   text-align: center;
   min-height: 0;
@@ -1491,6 +1491,20 @@ body.light-mode .lyriq-action-btn.active {
   transform: scale(1.035);
   opacity: 1;
   text-shadow: 0 2px 8px var(--color-accent), 0 0 1.5px #fff;
+}
+
+.edited-word {
+  color: var(--color-accent-alt);
+  font-style: italic;
+  font-weight: 700;
+}
+.lyriq-line.highlighted-line .edited-word {
+  color: #fff;
+  background-color: var(--color-accent-alt);
+  padding: 0 4px;
+  margin: 0 -4px; /* Counteract padding */
+  border-radius: 4px;
+  font-style: normal;
 }
 
 .lyriq-line.placeholder {
@@ -1599,7 +1613,7 @@ body.light-mode .lyriq-action-btn.active {
 
 /* Lyriq Modal */
 .lyriq-controls-modal {
-  position: absolute;
+  position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
@@ -1616,7 +1630,7 @@ body.light-mode .lyriq-action-btn.active {
   z-index: 105;
   padding: 0;
   height: var(--lyriq-modal-peeking-height);
-  max-height: 90vh;
+  max-height: 45vh;
 }
 .lyriq-player-view.empty-state .lyriq-controls-modal {
   pointer-events: none;
