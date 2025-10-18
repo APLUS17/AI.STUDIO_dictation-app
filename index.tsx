@@ -244,6 +244,10 @@ class VoiceNotesApp {
   private lyriqPlaybackStartTime: number = 0;
   private lyriqDebugMode = false;
 
+  // Lyriq style properties
+  private lyriqPaddingSmall: string = '';
+  private lyriqPaddingCenter: string = '';
+
   // Debug panel elements
   private lyriqDebugPanel: HTMLDivElement;
   private debugTime: HTMLSpanElement;
@@ -388,6 +392,11 @@ class VoiceNotesApp {
     this.loadDataFromStorage();
     this.setActiveMixerTrack('beat');
     this.updateLyriqControlsState();
+
+    // Cache Lyriq style properties
+    const styles = getComputedStyle(document.documentElement);
+    this.lyriqPaddingSmall = styles.getPropertyValue('--lyriq-padding-small').trim();
+    this.lyriqPaddingCenter = styles.getPropertyValue('--lyriq-padding-center').trim();
 
     // Initialize app state
     (async () => {
@@ -2564,12 +2573,33 @@ Follow these rules:
       }
   
       const lines = this.lyriqLineElements;
+      const totalLines = lines.length;
       const newHighlightIndex = this.findLineIndexAtTime(lookaheadTime, note.syncedLines);
   
       if (newHighlightIndex === this.lyriqCurrentLineIndex) {
           return;
       }
   
+      const activeLine = lines[newHighlightIndex] as HTMLElement;
+
+      if (this.lyriqAutoScrollEnabled && this.lyriqIsPlaying && activeLine) {
+          const container = this.lyricsContainer;
+          const containerHeight = container.offsetHeight;
+          const lineHeight = activeLine.offsetHeight || 33; // Use a fallback height for calculation
+          
+          // Always center the active line
+          container.style.paddingTop = this.lyriqPaddingCenter;
+
+          const lineTop = activeLine.offsetTop;
+          const newScrollTop = lineTop - (containerHeight / 2) + (lineHeight / 2);
+
+          container.scrollTo({
+              top: newScrollTop,
+              behavior: 'smooth'
+          });
+      }
+      
+      // Update highlighting classes on all lines
       lines.forEach((line, index) => {
           if (index < newHighlightIndex) {
               line.classList.add('past-line');
@@ -2577,9 +2607,6 @@ Follow these rules:
           } else if (index === newHighlightIndex) {
               line.classList.remove('past-line');
               line.classList.add('highlighted-line');
-              if (this.lyriqAutoScrollEnabled && this.lyriqIsPlaying) {
-                 line.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-              }
           } else {
               line.classList.remove('past-line', 'highlighted-line');
           }
@@ -2597,6 +2624,10 @@ Follow these rules:
           line.classList.remove('highlighted-line', 'past-line');
       });
       this.lyriqCurrentLineIndex = -1;
+      // Reset padding when clearing highlights (e.g., on pause)
+      if (this.lyricsContainer) {
+        this.lyricsContainer.style.paddingTop = this.lyriqPaddingSmall;
+      }
   }
 
   private handleLyriqEnded(): void {

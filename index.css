@@ -110,6 +110,8 @@
   --sidebar-width: 280px;
   --lyriq-modal-peeking-height: 96px;
   --lyriq-modal-expanded-height: 300px;
+  --lyriq-padding-small: 24px;
+  --lyriq-padding-center: 15vh;
 }
 
 body.light-mode {
@@ -1456,10 +1458,12 @@ body.light-mode .lyriq-action-btn.active {
 .lyriq-lyrics {
   flex: 1;
   overflow-y: auto;
-  padding: 0 24px calc(var(--lyriq-modal-expanded-height) + 24px);
-  scroll-padding-top: 40vh;
+  padding: 0 24px;
+  padding-top: var(--lyriq-padding-small);
+  padding-bottom: max(var(--lyriq-padding-center), calc(var(--lyriq-modal-expanded-height) + 24px));
   text-align: center;
   min-height: 0;
+  transition: padding-top 0.8s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .lyriq-line {
   font-size: 22px;
@@ -1532,7 +1536,8 @@ body.light-mode .lyriq-action-btn.active {
 /* Lyriq Editor Mode */
 .lyriq-player-view.editor-mode .lyriq-lyrics {
   text-align: left;
-  padding: 0 40px 30vh;
+  padding: 0 40px;
+  scroll-padding-bottom: 30vh;
 }
 .lyriq-player-view.editor-mode .lyriq-line,
 .lyriq-player-view.editor-mode #lyricsContainer[contenteditable=true] {
@@ -2143,7 +2148,8 @@ body.light-mode .lyriq-action-btn.active {
   }
   .project-assignment-container { display: none; }
   .lyriq-player-view.editor-mode .lyriq-lyrics {
-      padding: 0 24px 30vh;
+      padding: 0 24px;
+      scroll-padding-bottom: 30vh;
   }
 }
 
@@ -2168,6 +2174,12 @@ body.light-mode .lyriq-action-btn.active {
       font-size: 20px;
     }
     .lyriq-expanded-controls { gap: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyriq-lyrics {
+    transition: none;
+  }
 }
 
 /* Spinner for processing */
