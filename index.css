@@ -23,6 +23,7 @@
   --color-recording-dark: #ff453a;
   --color-recording-paused-dark: #b53730;
   --color-success-dark: #32d74b;
+  --color-edited-dark: #ffd700;
   --sidebar-bg-dark: #181818;
   --sidebar-border-dark: #2a2a2a;
   --sidebar-item-hover-bg-dark: rgba(255, 255, 255, 0.05);
@@ -52,6 +53,7 @@
   --color-recording-light: #ff3b30;
   --color-recording-paused-light: #d63027;
   --color-success-light: #30d158;
+  --color-edited-light: #f5a623;
   --sidebar-bg-light: #FFFFFF;
   --sidebar-border-light: #EAEAEA;
   --sidebar-item-hover-bg-light: #f0f0f0;
@@ -82,6 +84,7 @@
   --color-recording: var(--color-recording-dark);
   --color-recording-paused: var(--color-recording-paused-dark);
   --color-success: var(--color-success-dark);
+  --color-edited: var(--color-edited-dark);
   --sidebar-bg: var(--sidebar-bg-dark);
   --sidebar-border: var(--sidebar-border-dark);
   --sidebar-item-hover-bg: var(--sidebar-item-hover-bg-dark);
@@ -111,7 +114,7 @@
   --lyriq-modal-peeking-height: 96px;
   --lyriq-modal-expanded-height: 300px;
   --lyriq-padding-small: 24px;
-  --lyriq-padding-center: 12vh;
+  --lyriq-padding-center: 30vh;
 }
 
 body.light-mode {
@@ -130,6 +133,7 @@ body.light-mode {
   --color-recording: #ff3b30;
   --color-recording-paused: var(--color-recording-paused-light);
   --color-success: #30d158;
+  --color-edited: var(--color-edited-light);
   --sidebar-bg: #F2F2F7;
   --sidebar-border: #EAEAEA;
   --sidebar-item-hover-bg: #e5e5ea;
@@ -1463,7 +1467,6 @@ body.light-mode .lyriq-action-btn.active {
   padding-bottom: max(var(--lyriq-padding-center), calc(var(--lyriq-modal-expanded-height) + 24px));
   text-align: center;
   min-height: 0;
-  transition: padding-top 0.8s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .lyriq-line {
   font-size: 22px;
@@ -1498,13 +1501,13 @@ body.light-mode .lyriq-action-btn.active {
 }
 
 .edited-word {
-  color: var(--color-accent-alt);
+  color: var(--color-edited);
   font-style: italic;
   font-weight: 700;
 }
 .lyriq-line.highlighted-line .edited-word {
   color: #fff;
-  background-color: var(--color-accent-alt);
+  background-color: var(--color-edited);
   padding: 0 4px;
   margin: 0 -4px; /* Counteract padding */
   border-radius: 4px;
