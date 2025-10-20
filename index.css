@@ -111,7 +111,7 @@
   --lyriq-modal-peeking-height: 96px;
   --lyriq-modal-expanded-height: 300px;
   --lyriq-padding-small: 24px;
-  --lyriq-padding-center: 15vh;
+  --lyriq-padding-center: 12vh;
 }
 
 body.light-mode {
