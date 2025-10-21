@@ -1449,6 +1449,11 @@ body.light-mode .lyriq-action-btn.active {
   align-items: center;
   gap: 16px;
 }
+.lyriq-action-buttons {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
 #lyriqSongTitle {
   font-size: 28px;
   font-weight: 700;
@@ -1518,6 +1523,86 @@ body.light-mode .lyriq-action-btn.active {
   color: var(--color-text-tertiary);
   font-style: italic;
   font-weight: 400;
+}
+
+/* Sync state indicators */
+.lyriq-line.unsynced {
+  opacity: 0.5;
+  position: relative;
+  padding-left: 32px;
+}
+.lyriq-line.unsynced::before {
+  content: '○';
+  position: absolute;
+  left: 8px;
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+}
+
+.lyriq-line.synced {
+  position: relative;
+  padding-left: 32px;
+}
+.lyriq-line.synced::before {
+  content: '✓';
+  position: absolute;
+  left: 8px;
+  color: var(--color-accent);
+  font-size: 14px;
+}
+
+.lyriq-line.sync-active {
+  color: #fff !important;
+  background-color: var(--color-accent) !important;
+  font-weight: bold;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(255, 65, 108, 0.5);
+  animation: pulse-sync 1.5s infinite;
+}
+
+@keyframes pulse-sync {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+
+/* Tap Sync Button */
+.lyriq-tap-sync-btn {
+  position: fixed;
+  bottom: calc(var(--lyriq-modal-expanded-height) + 24px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--color-accent), #ff6b9d);
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(255, 65, 108, 0.4);
+  transition: all var(--transition-fast);
+  z-index: 110;
+}
+.lyriq-tap-sync-btn:hover {
+  transform: translateX(-50%) scale(1.05);
+  box-shadow: 0 12px 32px rgba(255, 65, 108, 0.6);
+}
+.lyriq-tap-sync-btn:active {
+  transform: translateX(-50%) scale(0.95);
+}
+.lyriq-tap-sync-btn i {
+  font-size: 32px;
+}
+
+/* Show tap button only in sync mode */
+.lyriq-player-view.sync-mode .lyriq-tap-sync-btn {
+  display: flex;
 }
 
 .lyriq-debug-panel {

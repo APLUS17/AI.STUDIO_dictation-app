@@ -169,6 +169,8 @@ class VoiceNotesApp {
   private lyriqPlayerButton: HTMLAnchorElement;
   private lyriqSidebarToggleButton: HTMLButtonElement;
   private lyriqModeToggleBtn: HTMLButtonElement;
+  private lyriqSyncBtn: HTMLButtonElement;
+  private lyriqTapSyncBtn: HTMLButtonElement;
   private audioUploadInput: HTMLInputElement;
   private lyriqAudioPlayer: HTMLAudioElement;
   private lyriqVocalAudioPlayer: HTMLAudioElement;
@@ -228,9 +230,15 @@ class VoiceNotesApp {
   private lyriqLineElements: NodeListOf<HTMLParagraphElement> | null = null;
   private activeMixerTrack: MixerTrack = 'beat';
   private vocalBlobForMaster: Blob | null = null;
-  private lyriqMode: 'karaoke' | 'editor' = 'editor';
+  private lyriqMode: 'karaoke' | 'editor' | 'sync' = 'editor';
   private lyriqLyricsAreDirty = false;
-  
+
+  // Manual sync properties
+  private isManualSyncMode = false;
+  private manualSyncStartLine = 0;
+  private manualSyncCurrentLine = 0;
+  private manualSyncTimestamps: number[] = [];
+
   private lyriqAnimationId: number | null = null;
   private readonly PIXELS_PER_SECOND = 100;
   private LYRIQ_HIGHLIGHT_OFFSET = 0.15; // 150ms lookahead for anticipation
@@ -336,6 +344,8 @@ class VoiceNotesApp {
     this.lyriqPlayerButton = document.getElementById('lyriqPlayerButton') as HTMLAnchorElement;
     this.lyriqSidebarToggleButton = document.getElementById('lyriqSidebarToggleButton') as HTMLButtonElement;
     this.lyriqModeToggleBtn = document.getElementById('lyriqModeToggleBtn') as HTMLButtonElement;
+    this.lyriqSyncBtn = document.getElementById('lyriqSyncBtn') as HTMLButtonElement;
+    this.lyriqTapSyncBtn = document.getElementById('lyriqTapSyncBtn') as HTMLButtonElement;
     this.audioUploadInput = document.getElementById('audioUpload') as HTMLInputElement;
     this.lyriqAudioPlayer = document.getElementById('lyriqAudio') as HTMLAudioElement;
     this.lyriqVocalAudioPlayer = document.getElementById('lyriqVocalAudio') as HTMLAudioElement;
@@ -533,6 +543,8 @@ class VoiceNotesApp {
     });
     this.lyriqSidebarToggleButton.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleSidebar(); });
     this.lyriqModeToggleBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleLyriqMode(); });
+    this.lyriqSyncBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.startManualSync(0); });
+    this.lyriqTapSyncBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.tapSync(); });
     this.audioUploadInput.addEventListener('change', (e) => this.handleLyriqFileUpload(e as Event));
     this.lyriqInitialAddBeatBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.audioUploadInput.click(); });
     this.lyriqInitialRecordBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.showLyriqModal(true); });
@@ -2214,12 +2226,20 @@ Follow these rules:
   }
 
   private toggleLyriqMode(): void {
+      // If in sync mode, cancel it
+      if (this.lyriqMode === 'sync') {
+          this.cancelManualSync();
+          return;
+      }
+
+      // Toggle between karaoke and editor
       this.lyriqMode = this.lyriqMode === 'karaoke' ? 'editor' : 'karaoke';
       this.lyriqLyricsAreDirty = false; // Reset dirty flag on every toggle
       const icon = this.lyriqModeToggleBtn.querySelector('i')!;
-  
+
       if (this.lyriqMode === 'editor') {
           this.lyriqPlayerView.classList.add('editor-mode');
+          this.lyriqPlayerView.classList.remove('sync-mode');
           icon.className = 'fas fa-microphone-alt';
           this.lyriqModeToggleBtn.title = 'Karaoke Mode';
           this.lyricsContainer.contentEditable = 'true';
@@ -2229,7 +2249,7 @@ Follow these rules:
       } else {
           // Save any pending changes before switching out of editor mode
           this.updateNoteFromLyriqEditor();
-          this.lyriqPlayerView.classList.remove('editor-mode');
+          this.lyriqPlayerView.classList.remove('editor-mode', 'sync-mode');
           icon.className = 'fas fa-edit';
           this.lyriqModeToggleBtn.title = 'Editor Mode';
           this.lyricsContainer.contentEditable = 'false';
@@ -2268,27 +2288,72 @@ Follow these rules:
       note.timestamp = Date.now();
       
       if (this.lyriqLyricsAreDirty && note.syncedLines) {
-          const newLines = newText.split('\n');
-          
-          // If the number of lines has changed, the timing data is no longer valid.
-          if (newLines.length !== note.syncedLines.length) {
-              console.warn('Lyric line count changed. Detaching sync data.');
-              note.syncedLines = null;
-              note.syncedWords = null; // Also clear word-level sync
-          } else {
-              // Line count is the same, update the text but keep the timing.
-              note.syncedLines.forEach((line, index) => {
-                  const newLineText = newLines[index];
-                  if (newLineText !== undefined) {
-                      if (newLineText.trim() !== line.text.trim()) {
-                          line.editedText = newLineText;
-                      } else {
-                          // If the text is reverted to original, clear the edit flag
-                          delete line.editedText;
-                      }
+          const newLines = newText.split('\n').filter(line => line.trim() !== '');
+          const oldSyncedLines = note.syncedLines;
+
+          // Smart line matching: preserve timing for similar lines
+          const updatedSyncedLines: TimedLine[] = [];
+
+          newLines.forEach((newLineText, newIndex) => {
+              // Try to find a matching synced line using similarity
+              let bestMatch: TimedLine | null = null;
+              let bestMatchScore = 0;
+
+              oldSyncedLines.forEach((syncedLine) => {
+                  const originalText = syncedLine.text.trim().toLowerCase();
+                  const editedText = (syncedLine.editedText || syncedLine.text).trim().toLowerCase();
+                  const newTextLower = newLineText.trim().toLowerCase();
+
+                  // Calculate similarity score
+                  let score = 0;
+                  if (newTextLower === originalText || newTextLower === editedText) {
+                      score = 1.0; // Perfect match
+                  } else if (newTextLower.includes(originalText) || originalText.includes(newTextLower)) {
+                      score = 0.8; // Contains match
+                  } else if (newTextLower.includes(editedText) || editedText.includes(newTextLower)) {
+                      score = 0.8;
+                  } else {
+                      // Check word overlap
+                      const newWords = newTextLower.split(/\s+/);
+                      const oldWords = originalText.split(/\s+/);
+                      const matchingWords = newWords.filter(w => oldWords.includes(w)).length;
+                      score = matchingWords / Math.max(newWords.length, oldWords.length);
+                  }
+
+                  if (score > bestMatchScore) {
+                      bestMatchScore = score;
+                      bestMatch = syncedLine;
                   }
               });
+
+              // If we found a good match (>50% similarity), preserve the timing
+              if (bestMatch && bestMatchScore > 0.5) {
+                  updatedSyncedLines.push({
+                      text: bestMatch.text,
+                      editedText: newLineText !== bestMatch.text ? newLineText : undefined,
+                      start: bestMatch.start,
+                      end: bestMatch.end
+                  });
+              } else {
+                  // No match found - mark as unsynced (no timing data)
+                  updatedSyncedLines.push({
+                      text: newLineText,
+                      start: -1, // -1 indicates unsynced
+                      end: undefined
+                  });
+              }
+          });
+
+          // Only keep the updated synced lines if at least some have timing
+          const hasSomeTiming = updatedSyncedLines.some(line => line.start >= 0);
+          if (hasSomeTiming) {
+              note.syncedLines = updatedSyncedLines;
+          } else {
+              // If all lines lost timing, clear sync data
+              note.syncedLines = null;
+              note.syncedWords = null;
           }
+
           this.lyriqLyricsAreDirty = false;
       }
       
@@ -2379,8 +2444,11 @@ Follow these rules:
       this.lyricsContainer.innerHTML = ''; // Clear existing
       this.lyriqLineElements = null;
 
+      // Check if we have synced lines and if any are unsynced
+      let hasUnsyncedLines = false;
       if (note.syncedLines && note.syncedLines.length > 0) {
           this.renderSyncedLines(note.syncedLines);
+          hasUnsyncedLines = note.syncedLines.some(line => line.start < 0);
       } else {
           const lyricsText = this.flattenSections(note.sections);
 
@@ -2393,22 +2461,40 @@ Follow these rules:
                     this.lyricsContainer.appendChild(lineEl);
                   }
               });
+              // If there are lyrics but no sync data, they're all unsynced
+              hasUnsyncedLines = true;
           } else {
               this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">This note has no lyrics. Try recording some vocals.</p>';
           }
       }
+
+      // Show sync button if there are unsynced lines and we have audio
+      if (hasUnsyncedLines && this.lyriqAudioPlayer.src && !this.isManualSyncMode) {
+          this.lyriqSyncBtn.style.display = 'flex';
+      } else {
+          this.lyriqSyncBtn.style.display = 'none';
+      }
+
       this.lyriqCurrentLineIndex = -1; // Reset line tracking
   }
 
   private renderSyncedLines(lines: TimedLine[]): void {
       this.lyricsContainer.innerHTML = '';
-      lines.forEach(line => {
+      lines.forEach((line, index) => {
           const lineEl = document.createElement('p');
           lineEl.className = 'lyriq-line';
-  
+
+          // Mark unsynced lines
+          if (line.start < 0) {
+              lineEl.classList.add('unsynced');
+          }
+
+          // Store line index for manual sync
+          lineEl.dataset.lineIndex = index.toString();
+
           const originalText = line.text;
           const editedText = line.editedText;
-  
+
           if (this.lyriqMode === 'editor' || !editedText) {
               lineEl.innerText = editedText ?? originalText;
           } else {
@@ -2416,11 +2502,11 @@ Follow these rules:
               const editedWords = editedText.split(' ');
               let html = '';
               const maxWords = Math.max(originalWords.length, editedWords.length);
-  
+
               for (let i = 0; i < maxWords; i++) {
                   const originalWord = originalWords[i];
                   const editedWord = editedWords[i];
-  
+
                   if (editedWord === undefined) {
                       // Word was deleted, do nothing
                   } else if (originalWord !== editedWord) {
@@ -2431,10 +2517,161 @@ Follow these rules:
               }
               lineEl.innerHTML = html.trim();
           }
-          
+
           this.lyricsContainer.appendChild(lineEl);
       });
       this.lyriqLineElements = this.lyricsContainer.querySelectorAll('.lyriq-line');
+  }
+
+  /**
+   * Start manual sync mode from a specific line (resume feature)
+   */
+  private startManualSync(startLineIndex: number = 0): void {
+      if (!this.currentNoteId) return;
+      const note = this.notes.get(this.currentNoteId);
+      if (!note) return;
+
+      // Ensure we have lyrics to sync
+      const lyricsText = this.flattenSections(note.sections);
+      const lines = lyricsText.split('\n').filter(l => l.trim());
+
+      if (lines.length === 0) {
+          alert('No lyrics to sync. Please add lyrics first.');
+          return;
+      }
+
+      // Initialize or update syncedLines if needed
+      if (!note.syncedLines || note.syncedLines.length !== lines.length) {
+          note.syncedLines = lines.map(text => ({
+              text,
+              start: -1, // Mark as unsynced
+              end: undefined
+          }));
+      }
+
+      this.isManualSyncMode = true;
+      this.manualSyncStartLine = startLineIndex;
+      this.manualSyncCurrentLine = startLineIndex;
+      this.manualSyncTimestamps = [];
+
+      // Switch to sync mode
+      this.lyriqMode = 'sync';
+      this.lyriqPlayerView.classList.add('sync-mode');
+      this.lyriqPlayerView.classList.remove('editor-mode');
+      this.lyricsContainer.contentEditable = 'false';
+
+      // Update mode toggle button
+      const icon = this.lyriqModeToggleBtn.querySelector('i')!;
+      icon.className = 'fas fa-stopwatch';
+      this.lyriqModeToggleBtn.title = 'Exit Sync Mode';
+
+      // Render lines and highlight the current one
+      this.loadNoteIntoLyriqPlayer();
+      if (this.lyriqLineElements && this.lyriqLineElements[this.manualSyncCurrentLine]) {
+          this.lyriqLineElements[this.manualSyncCurrentLine].classList.add('sync-active');
+      }
+
+      // Show tap sync button
+      this.lyriqTapSyncBtn.style.display = 'flex';
+      this.lyriqSyncBtn.style.display = 'none';
+
+      // Start playback if audio is loaded
+      if (this.lyriqAudioPlayer.src && !this.lyriqIsPlaying) {
+          this.toggleLyriqPlayback();
+      }
+  }
+
+  /**
+   * Tap to mark the current line's timestamp
+   */
+  private tapSync(): void {
+      if (!this.isManualSyncMode || !this.currentNoteId) return;
+
+      const note = this.notes.get(this.currentNoteId);
+      if (!note || !note.syncedLines) return;
+
+      // Get current playback time
+      const currentTime = this.lyriqAudioContext
+          ? this.lyriqAudioContext.currentTime - this.lyriqPlaybackStartTime
+          : this.lyriqAudioPlayer.currentTime;
+
+      // Mark the current line's start time
+      if (this.manualSyncCurrentLine < note.syncedLines.length) {
+          note.syncedLines[this.manualSyncCurrentLine].start = currentTime;
+
+          // Set previous line's end time
+          if (this.manualSyncCurrentLine > 0) {
+              note.syncedLines[this.manualSyncCurrentLine - 1].end = currentTime;
+          }
+
+          this.manualSyncTimestamps.push(currentTime);
+          this.triggerHapticFeedback(10);
+
+          // Remove highlight from current line
+          if (this.lyriqLineElements && this.lyriqLineElements[this.manualSyncCurrentLine]) {
+              this.lyriqLineElements[this.manualSyncCurrentLine].classList.remove('sync-active', 'unsynced');
+              this.lyriqLineElements[this.manualSyncCurrentLine].classList.add('synced');
+          }
+
+          // Move to next line
+          this.manualSyncCurrentLine++;
+
+          if (this.manualSyncCurrentLine < note.syncedLines.length) {
+              // Highlight next line
+              if (this.lyriqLineElements && this.lyriqLineElements[this.manualSyncCurrentLine]) {
+                  this.lyriqLineElements[this.manualSyncCurrentLine].classList.add('sync-active');
+
+                  // Auto-scroll to keep current line visible
+                  this.lyriqLineElements[this.manualSyncCurrentLine].scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'center'
+                  });
+              }
+          } else {
+              // Finished syncing all lines
+              this.finishManualSync();
+          }
+      }
+
+      this.saveDataToStorage();
+  }
+
+  /**
+   * Complete manual sync mode
+   */
+  private finishManualSync(): void {
+      this.isManualSyncMode = false;
+      this.lyriqMode = 'karaoke';
+      this.lyriqPlayerView.classList.remove('sync-mode');
+      this.lyriqTapSyncBtn.style.display = 'none';
+
+      // Update mode toggle button
+      const icon = this.lyriqModeToggleBtn.querySelector('i')!;
+      icon.className = 'fas fa-edit';
+      this.lyriqModeToggleBtn.title = 'Editor Mode';
+
+      // Reload to show synced lyrics
+      this.loadNoteIntoLyriqPlayer();
+
+      this.triggerHapticFeedback([30, 20, 30]);
+      this.saveDataToStorage();
+  }
+
+  /**
+   * Cancel manual sync mode
+   */
+  private cancelManualSync(): void {
+      this.isManualSyncMode = false;
+      this.lyriqMode = 'karaoke';
+      this.lyriqPlayerView.classList.remove('sync-mode');
+      this.lyriqTapSyncBtn.style.display = 'none';
+
+      // Update mode toggle button
+      const icon = this.lyriqModeToggleBtn.querySelector('i')!;
+      icon.className = 'fas fa-edit';
+      this.lyriqModeToggleBtn.title = 'Editor Mode';
+
+      this.loadNoteIntoLyriqPlayer();
   }
 
   private async handleLyriqFileUpload(event: Event): Promise<void> {
@@ -2553,6 +2790,10 @@ Follow these rules:
           return -1;
       }
       for (let i = lines.length - 1; i >= 0; i--) {
+          // Skip unsynced lines (start < 0)
+          if (lines[i].start < 0) {
+              continue;
+          }
           if (lines[i].start <= time) {
               if (lines[i].end && time > lines[i].end!) {
                   continue;

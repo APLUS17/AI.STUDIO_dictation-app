@@ -160,14 +160,25 @@
       
           <div class="lyriq-song-info">
               <h1 id="lyriqSongTitle">Untitled Note</h1>
-              <button class="lyriq-action-btn" id="lyriqModeToggleBtn" title="Editor Mode">
-                  <i class="fas fa-edit"></i>
-              </button>
+              <div class="lyriq-action-buttons">
+                  <button class="lyriq-action-btn" id="lyriqSyncBtn" title="Manual Sync" style="display: none;">
+                      <i class="fas fa-sync-alt"></i>
+                  </button>
+                  <button class="lyriq-action-btn" id="lyriqModeToggleBtn" title="Editor Mode">
+                      <i class="fas fa-edit"></i>
+                  </button>
+              </div>
           </div>
       
           <div id="lyricsContainer" class="lyriq-lyrics">
               <!-- Lyrics populated here -->
           </div>
+
+          <!-- Tap Sync Button (appears in sync mode) -->
+          <button id="lyriqTapSyncBtn" class="lyriq-tap-sync-btn" style="display: none;">
+              <i class="fas fa-hand-pointer"></i>
+              <span>TAP</span>
+          </button>
 
           <div id="lyriqDebugPanel" class="lyriq-debug-panel" style="display: none;">
             <div>Time: <span id="debugTime">0.000</span></div>
