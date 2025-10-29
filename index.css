@@ -113,8 +113,7 @@
   --sidebar-width: 280px;
   --lyriq-modal-peeking-height: 96px;
   --lyriq-modal-expanded-height: 300px;
-  --lyriq-padding-small: 24px;
-  --lyriq-padding-center: 30vh;
+  --lyriq-scroll-focus-point: 40vh;
 }
 
 body.light-mode {
@@ -1463,10 +1462,10 @@ body.light-mode .lyriq-action-btn.active {
   flex: 1;
   overflow-y: auto;
   padding: 0 24px;
-  padding-top: var(--lyriq-padding-small);
-  padding-bottom: max(var(--lyriq-padding-center), calc(var(--lyriq-modal-expanded-height) + 24px));
   text-align: center;
   min-height: 0;
+  scroll-padding-top: var(--lyriq-scroll-focus-point);
+  scroll-padding-bottom: calc(100vh - var(--lyriq-scroll-focus-point) - 100px);
 }
 .lyriq-line {
   font-size: 22px;

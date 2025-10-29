@@ -410,10 +410,6 @@ class VoiceNotesApp {
   private lyriqPlaybackStartTime: number = 0;
   private lyriqDebugMode = false;
 
-  // Lyriq style properties
-  private lyriqPaddingSmall: string = '';
-  private lyriqPaddingCenter: string = '';
-
   // Debug panel elements
   private lyriqDebugPanel: HTMLDivElement;
   private debugTime: HTMLSpanElement;
@@ -557,11 +553,6 @@ class VoiceNotesApp {
     this.loadDataFromStorage();
     this.setActiveMixerTrack('beat');
     this.updateLyriqControlsState();
-
-    // Cache Lyriq style properties
-    const styles = getComputedStyle(document.documentElement);
-    this.lyriqPaddingSmall = styles.getPropertyValue('--lyriq-padding-small').trim();
-    this.lyriqPaddingCenter = styles.getPropertyValue('--lyriq-padding-center').trim();
 
     // Initialize app state
     (async () => {
@@ -2661,15 +2652,9 @@ class VoiceNotesApp {
         activeLine.classList.remove('past-line');
         activeLine.classList.add('highlighted-line');
 
-        // Auto-scroll logic
+        // Auto-scroll logic using modern scrollIntoView with CSS scroll-padding
         if (this.lyriqAutoScrollEnabled && this.lyriqIsPlaying) {
-          const container = this.lyricsContainer;
-          const containerHeight = container.offsetHeight;
-          const lineHeight = activeLine.offsetHeight || 33;
-          container.style.paddingTop = this.lyriqPaddingCenter;
-          const lineTop = activeLine.offsetTop;
-          const newScrollTop = lineTop - (containerHeight / 2) + (lineHeight / 2);
-          container.scrollTo({ top: newScrollTop, behavior: 'smooth' });
+          activeLine.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
       }
 
@@ -2703,10 +2688,6 @@ class VoiceNotesApp {
           });
       });
       this.lyriqCurrentLineIndex = -1;
-      // Reset padding when clearing highlights (e.g., on pause)
-      if (this.lyricsContainer) {
-        this.lyricsContainer.style.paddingTop = this.lyriqPaddingSmall;
-      }
   }
 
   private handleLyriqEnded(): void {
