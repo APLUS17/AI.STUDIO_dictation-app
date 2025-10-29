@@ -7,9 +7,175 @@
 import {GoogleGenAI, Type} from '@google/genai';
 import {marked} from 'marked';
 
-const MODEL_NAME = 'gemini-2.5-flash';
+// --- Standalone Utility Functions ---
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = (reader.result as string).split(',')[1];
+      resolve(base64String);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
-// Interfaces for data structures
+/**
+ * Groups an array of timed words into lines.
+ * A new line is started if there's a significant pause between words.
+ */
+function groupWordsIntoLines(words: TimedWord[]): TimedLine[] {
+    if (!words || words.length === 0) {
+        return [];
+    }
+
+    const lines: TimedLine[] = [];
+    let currentLine: TimedWord[] = [];
+    const MAX_PAUSE_BETWEEN_WORDS = 0.5; // seconds
+
+    words.forEach((word, index) => {
+        if (currentLine.length === 0) {
+            currentLine.push(word);
+        } else {
+            const previousWord = currentLine[currentLine.length - 1];
+            const pause = word.start - previousWord.end;
+
+            if (pause < MAX_PAUSE_BETWEEN_WORDS) {
+                currentLine.push(word);
+            } else {
+                lines.push({
+                    text: currentLine.map(w => w.word).join(' '),
+                    start: currentLine[0].start,
+                    end: currentLine[currentLine.length - 1].end,
+                });
+                currentLine = [word];
+            }
+        }
+    });
+
+    // Add the last line
+    if (currentLine.length > 0) {
+        lines.push({
+            text: currentLine.map(w => w.word).join(' '),
+            start: currentLine[0].start,
+            end: currentLine[currentLine.length - 1].end,
+        });
+    }
+
+    return lines;
+}
+
+
+// --- AI Helper Class for Gemini API interactions ---
+const AI_MODEL_NAME = 'gemini-2.5-flash';
+
+class AIHelper {
+  private genAI: GoogleGenAI;
+
+  constructor() {
+    this.genAI = new GoogleGenAI({apiKey: process.env.API_KEY});
+  }
+
+  async structureVoiceMemo(audioBlob: Blob): Promise<NoteSection[]> {
+    const base64Audio = await blobToBase64(audioBlob);
+    const audioPart = {
+      inlineData: {
+        mimeType: audioBlob.type,
+        data: base64Audio,
+      },
+    };
+
+    const prompt = `You are an expert musical assistant for a songwriter. I'm providing an audio voice memo.
+Your task is to transcribe the audio and structure it into a clear, organized format for songwriting.
+
+Follow these rules:
+1. First, transcribe the audio, which may contain singing, humming, speech, and musical instruments.
+2. Next, analyze the transcription to identify distinct song sections (e.g., Verse, Chorus, Bridge, Intro, etc.). If the structure isn't clear, use logical groupings like "Idea 1", "Idea 2".
+3. Clean up the content: remove filler words (um, uh), correct obvious transcription errors, and format lyrics cleanly. Preserve the core creative ideas from the audio. Do NOT add any new lyrics or ideas.
+4. Format the final output as a JSON object. This object must be an array of "NoteSection" objects.
+5. Each NoteSection object must have two properties: "type" (a string, e.g., "Verse") and "content" (a string with the lyrics/notes for that section).
+6. If the audio contains very little content, you can create a single section (e.g., "Verse" or "Lyric Idea").`;
+
+    const response = await this.genAI.models.generateContent({
+      model: AI_MODEL_NAME,
+      contents: { parts: [ audioPart, { text: prompt } ] },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              type: { type: Type.STRING },
+              content: { type: Type.STRING }
+            },
+            required: ["type", "content"]
+          }
+        }
+      }
+    });
+    
+    const jsonString = response.text;
+    try {
+        const structuredResult = JSON.parse(jsonString).map((section: any) => ({...section, takes: []}));
+        return structuredResult;
+    } catch (e) {
+        console.error("Failed to parse AI JSON response for structuring:", e);
+        console.error("Received text:", jsonString);
+        // Fallback: return the raw text as a single section
+        return [{ type: 'Verse', content: jsonString, takes: [] }];
+    }
+  }
+
+  async syncLyricsWithWordTimings(audioBlob: Blob): Promise<TimedWord[]> {
+    const base64Audio = await blobToBase64(audioBlob);
+    const audioPart = {
+      inlineData: {
+        mimeType: audioBlob.type,
+        data: base64Audio,
+      },
+    };
+
+    const prompt = `You are an expert Speech-to-Text processor specializing in musical vocals. Your task is to analyze the provided audio and produce a highly accurate, word-for-word transcription with precise timing.
+
+Follow these rules strictly:
+1.  Transcribe the sung vocals in the audio.
+2.  Format the entire output as a single, clean JSON array of objects.
+3.  Each object in the array represents a single word.
+4.  Each object MUST contain three keys:
+    - "word": The transcribed word as a string.
+    - "start": The start time of the word in seconds (float).
+    - "end": The end time of the word in seconds (float).
+5.  Do NOT include any additional commentary, text, or formatting outside of the final JSON array. The response must be only the JSON.`;
+        
+    const response = await this.genAI.models.generateContent({
+        model: AI_MODEL_NAME,
+        contents: { parts: [audioPart, { text: prompt }] },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        word: { type: Type.STRING },
+                        start: { type: Type.NUMBER },
+                        end: { type: Type.NUMBER }
+                    },
+                    required: ["word", "start", "end"]
+                }
+            }
+        }
+    });
+
+    const jsonString = response.text;
+    const timedWords: TimedWord[] = JSON.parse(jsonString);
+    return timedWords;
+  }
+}
+
+
+// --- Interfaces for data structures ---
 interface AudioTake {
   id: string;
   url: string | null;
@@ -70,7 +236,7 @@ type MixerTrack = 'beat' | 'vocal';
 
 class VoiceNotesApp {
   // AI and Media Recording properties
-  private genAI: GoogleGenAI;
+  private aiHelper: AIHelper;
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private isRecording = false;
@@ -225,7 +391,7 @@ class VoiceNotesApp {
   private lyriqIsPlaying = false;
   private lyriqAutoScrollEnabled = true;
   private lyriqCurrentLineIndex = -1;
-  private lyriqLineElements: NodeListOf<HTMLParagraphElement> | null = null;
+  private lyriqLineElements: HTMLElement[] | null = null;
   private activeMixerTrack: MixerTrack = 'beat';
   private vocalBlobForMaster: Blob | null = null;
   private lyriqMode: 'karaoke' | 'editor' = 'editor';
@@ -268,9 +434,8 @@ class VoiceNotesApp {
 
 
   constructor() {
-    // Initialize AI
-    // FIX: Initialize GoogleGenAI with a named apiKey parameter.
-    this.genAI = new GoogleGenAI({apiKey: process.env.API_KEY});
+    // Initialize AI Helper
+    this.aiHelper = new AIHelper();
 
     // Get all necessary DOM elements
     this.appContainer = document.getElementById('appContainer') as HTMLDivElement;
@@ -1285,9 +1450,7 @@ class VoiceNotesApp {
 
   private handleLibraryTabClick(e: MouseEvent): void {
       const target = e.target as HTMLElement;
-      // Fix: The generic parameter on `closest` may not be correctly inferring the type.
-      // Casting to `HTMLButtonElement` ensures `dataset` is available.
-      const button = target.closest('.library-tab-btn') as HTMLButtonElement | null;
+      const button = target.closest<HTMLButtonElement>('.library-tab-btn');
       if (button && !button.classList.contains('active')) {
           this.triggerHapticFeedback();
           this.libraryTabsContainer.querySelector('.active')?.classList.remove('active');
@@ -1526,7 +1689,7 @@ class VoiceNotesApp {
                     const newTake: AudioTake = {
                         id: `take_${Date.now()}`,
                         url: URL.createObjectURL(audioBlob),
-                        data: await this.blobToBase64(audioBlob),
+                        data: await blobToBase64(audioBlob),
                         mimeType: audioBlob.type,
                         duration: await this.getAudioDuration(URL.createObjectURL(audioBlob)),
                         timestamp: Date.now()
@@ -1580,66 +1743,11 @@ class VoiceNotesApp {
     if (!this.currentNoteId) return;
 
     document.body.classList.add('is-processing');
-    this.recordingStatus.textContent = 'Processing audio...';
+    this.recordingStatus.textContent = 'Structuring note...';
     
     try {
-      const base64Audio = await this.blobToBase64(audioBlob);
-      const audioPart = {
-        inlineData: {
-          mimeType: audioBlob.type,
-          data: base64Audio,
-        },
-      };
-
-      const prompt = `You are an expert musical assistant for a songwriter. I'm providing an audio voice memo.
-Your task is to transcribe the audio and structure it into a clear, organized format for songwriting.
-
-Follow these rules:
-1. First, transcribe the audio, which may contain singing, humming, speech, and musical instruments.
-2. Next, analyze the transcription to identify distinct song sections (e.g., Verse, Chorus, Bridge, Intro, etc.). If the structure isn't clear, use logical groupings like "Idea 1", "Idea 2".
-3. Clean up the content: remove filler words (um, uh), correct obvious transcription errors, and format lyrics cleanly. Preserve the core creative ideas from the audio. Do NOT add any new lyrics or ideas.
-4. Format the final output as a JSON object. This object must be an array of "NoteSection" objects.
-5. Each NoteSection object must have two properties: "type" (a string, e.g., "Verse") and "content" (a string with the lyrics/notes for that section).
-6. If the audio contains very little content, you can create a single section (e.g., "Verse" or "Lyric Idea").`;
-
-      const response = await this.genAI.models.generateContent({
-        model: MODEL_NAME,
-        contents: {
-          parts: [ audioPart, { text: prompt } ]
-        },
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                type: { type: Type.STRING },
-                content: { type: Type.STRING }
-              },
-              required: ["type", "content"]
-            }
-          }
-        }
-      });
-
-      const jsonString = response.text;
-      let structuredResult;
+      const structuredResult = await this.aiHelper.structureVoiceMemo(audioBlob);
       const note = this.notes.get(this.currentNoteId)!;
-
-      try {
-          structuredResult = JSON.parse(jsonString).map((section: any) => ({...section, takes: []}));
-      } catch (e) {
-          console.error("Failed to parse AI JSON response:", e);
-          console.error("Received text:", jsonString);
-          this.setFinalStatus('Could not parse structured note.', true);
-          note.polishedNote = jsonString; // Fallback
-          note.sections = [{ type: 'Verse', content: jsonString, takes: [] }];
-          this.saveDataToStorage();
-          this.saveNoteState();
-          this.setActiveNote(note.id);
-          return;
-      }
       
       const isNoteEmpty = note.sections.length === 0 || 
                           (note.sections.length === 1 && note.sections[0].content.trim() === '');
@@ -1665,7 +1773,11 @@ Follow these rules:
 
     } catch (error) {
       console.error('Error during transcription/processing:', error);
-      this.setFinalStatus('Error processing audio.', true);
+      let errorMessage = 'Error processing audio.';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      this.setFinalStatus(errorMessage, true);
     }
   }
 
@@ -1677,41 +1789,12 @@ Follow these rules:
     this.updateLyriqControlsState();
 
     try {
-        const base64Audio = await this.blobToBase64(audioBlob);
-        const audioPart = {
-            inlineData: {
-                mimeType: audioBlob.type,
-                data: base64Audio,
-            },
-        };
-
-        const prompt = `You are an expert Speech-to-Text processor. Analyze the provided audio, which contains sung vocals, and transcribe it. Your primary task is to identify natural lyrical lines or phrases. Format the entire output as a single, clean JSON array of objects. Each object in the array must represent a single lyric line and contain two keys: "text" (the transcribed text of the line) and "start" (the start time of the line in seconds, as a float). Do not include any additional commentary or text outside of the final JSON array.`;
-        
-        const response = await this.genAI.models.generateContent({
-            model: MODEL_NAME,
-            contents: { parts: [audioPart, { text: prompt }] },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            text: { type: Type.STRING },
-                            start: { type: Type.NUMBER }
-                        },
-                        required: ["text", "start"]
-                    }
-                }
-            }
-        });
-
-        const jsonString = response.text;
-        const timedLines: TimedLine[] = JSON.parse(jsonString);
+        const timedWords = await this.aiHelper.syncLyricsWithWordTimings(audioBlob);
+        const timedLines = groupWordsIntoLines(timedWords);
         
         const note = this.notes.get(this.currentNoteId)!;
+        note.syncedWords = timedWords;
         note.syncedLines = timedLines;
-        note.syncedWords = null; // Clear word data
         
         // Also update the note sections with the new transcription for the editor view
         const fullText = timedLines.map(l => l.text).join('\n');
@@ -2379,8 +2462,8 @@ Follow these rules:
       this.lyricsContainer.innerHTML = ''; // Clear existing
       this.lyriqLineElements = null;
 
-      if (note.syncedLines && note.syncedLines.length > 0) {
-          this.renderSyncedLines(note.syncedLines);
+      if (note.syncedWords && note.syncedWords.length > 0 && note.syncedLines && note.syncedLines.length > 0) {
+          this.renderSyncedLyrics(note);
       } else {
           const lyricsText = this.flattenSections(note.sections);
 
@@ -2393,48 +2476,37 @@ Follow these rules:
                     this.lyricsContainer.appendChild(lineEl);
                   }
               });
+              this.lyriqLineElements = Array.from(this.lyricsContainer.querySelectorAll('.lyriq-line'));
           } else {
               this.lyricsContainer.innerHTML = '<p class="lyriq-line placeholder">This note has no lyrics. Try recording some vocals.</p>';
           }
       }
       this.lyriqCurrentLineIndex = -1; // Reset line tracking
   }
-
-  private renderSyncedLines(lines: TimedLine[]): void {
+  
+  private renderSyncedLyrics(note: Note): void {
       this.lyricsContainer.innerHTML = '';
-      lines.forEach(line => {
+      let wordIndex = 0;
+  
+      note.syncedLines?.forEach(line => {
           const lineEl = document.createElement('p');
           lineEl.className = 'lyriq-line';
   
-          const originalText = line.text;
-          const editedText = line.editedText;
-  
-          if (this.lyriqMode === 'editor' || !editedText) {
-              lineEl.innerText = editedText ?? originalText;
-          } else {
-              const originalWords = originalText.split(' ');
-              const editedWords = editedText.split(' ');
-              let html = '';
-              const maxWords = Math.max(originalWords.length, editedWords.length);
-  
-              for (let i = 0; i < maxWords; i++) {
-                  const originalWord = originalWords[i];
-                  const editedWord = editedWords[i];
-  
-                  if (editedWord === undefined) {
-                      // Word was deleted, do nothing
-                  } else if (originalWord !== editedWord) {
-                      html += `<span class="edited-word">${editedWord}</span> `;
-                  } else {
-                      html += `${editedWord} `;
-                  }
-              }
-              lineEl.innerHTML = html.trim();
-          }
+          const lineText = line.editedText ?? line.text;
+          const wordsInLine = lineText.split(' ');
           
+          let lineContent = '';
+          for (let i = 0; i < wordsInLine.length; i++) {
+              const timedWord = note.syncedWords?.[wordIndex];
+              if (timedWord) {
+                  lineContent += `<span class="lyriq-word" data-start="${timedWord.start}" data-end="${timedWord.end}">${timedWord.word}</span> `;
+                  wordIndex++;
+              }
+          }
+          lineEl.innerHTML = lineContent.trim();
           this.lyricsContainer.appendChild(lineEl);
       });
-      this.lyriqLineElements = this.lyricsContainer.querySelectorAll('.lyriq-line');
+      this.lyriqLineElements = Array.from(this.lyricsContainer.querySelectorAll('.lyriq-line'));
   }
 
   private async handleLyriqFileUpload(event: Event): Promise<void> {
@@ -2563,65 +2635,72 @@ Follow these rules:
       return -1;
   }
 
-  private updateHighlightedLine(currentTime: number): void {
-      const note = this.currentNoteId ? this.notes.get(this.currentNoteId) : null;
-      const lookaheadTime = currentTime + this.LYRIQ_HIGHLIGHT_OFFSET;
-  
-      if (!note || !note.syncedLines || !this.lyriqLineElements || this.lyriqLineElements.length === 0) {
-          this.clearLyricHighlight();
-          return;
-      }
-  
-      const lines = this.lyriqLineElements;
-      const totalLines = lines.length;
-      const newHighlightIndex = this.findLineIndexAtTime(lookaheadTime, note.syncedLines);
-  
-      if (newHighlightIndex === this.lyriqCurrentLineIndex) {
-          return;
-      }
-  
-      const activeLine = lines[newHighlightIndex] as HTMLElement;
+  private updateLyricHighlighting(currentTime: number): void {
+    const note = this.currentNoteId ? this.notes.get(this.currentNoteId) : null;
+    const lookaheadTime = currentTime + this.LYRIQ_HIGHLIGHT_OFFSET;
 
-      if (this.lyriqAutoScrollEnabled && this.lyriqIsPlaying && activeLine) {
+    if (!note || !note.syncedLines || !this.lyriqLineElements || this.lyriqLineElements.length === 0) {
+        this.clearLyricHighlight();
+        return;
+    }
+
+    const newHighlightIndex = this.findLineIndexAtTime(lookaheadTime, note.syncedLines);
+
+    if (newHighlightIndex !== this.lyriqCurrentLineIndex) {
+      // Line change logic
+      const previousLine = this.lyriqLineElements[this.lyriqCurrentLineIndex];
+      if (previousLine) {
+        previousLine.classList.remove('highlighted-line');
+        previousLine.classList.add('past-line');
+        // Mark all words in the old line as past
+        previousLine.querySelectorAll('.lyriq-word').forEach(wordEl => wordEl.classList.add('past-word'));
+      }
+      
+      const activeLine = this.lyriqLineElements[newHighlightIndex];
+      if (activeLine) {
+        activeLine.classList.remove('past-line');
+        activeLine.classList.add('highlighted-line');
+
+        // Auto-scroll logic
+        if (this.lyriqAutoScrollEnabled && this.lyriqIsPlaying) {
           const container = this.lyricsContainer;
           const containerHeight = container.offsetHeight;
-          const lineHeight = activeLine.offsetHeight || 33; // Use a fallback height for calculation
-          
-          // Always center the active line
+          const lineHeight = activeLine.offsetHeight || 33;
           container.style.paddingTop = this.lyriqPaddingCenter;
-
           const lineTop = activeLine.offsetTop;
           const newScrollTop = lineTop - (containerHeight / 2) + (lineHeight / 2);
+          container.scrollTo({ top: newScrollTop, behavior: 'smooth' });
+        }
+      }
 
-          container.scrollTo({
-              top: newScrollTop,
-              behavior: 'smooth'
-          });
-      }
-      
-      // Update highlighting classes on all lines
-      lines.forEach((line, index) => {
-          if (index < newHighlightIndex) {
-              line.classList.add('past-line');
-              line.classList.remove('highlighted-line');
-          } else if (index === newHighlightIndex) {
-              line.classList.remove('past-line');
-              line.classList.add('highlighted-line');
-          } else {
-              line.classList.remove('past-line', 'highlighted-line');
-          }
-      });
-      
-      if (newHighlightIndex === -1) {
-           this.clearLyricHighlight();
-      }
-  
       this.lyriqCurrentLineIndex = newHighlightIndex;
+    }
+    
+    // Word-by-word highlighting within the current line
+    const currentLineEl = this.lyriqLineElements[this.lyriqCurrentLineIndex];
+    if (currentLineEl && note.syncedWords) {
+        const wordElements = currentLineEl.querySelectorAll('.lyriq-word');
+        wordElements.forEach(wordEl => {
+            const wordStart = parseFloat((wordEl as HTMLElement).dataset.start!);
+            if (currentTime >= wordStart) {
+                wordEl.classList.add('highlighted-word');
+            } else {
+                wordEl.classList.remove('highlighted-word');
+            }
+        });
+    }
+
+    if (newHighlightIndex === -1) {
+        this.clearLyricHighlight();
+    }
   }
 
   private clearLyricHighlight(): void {
       this.lyriqLineElements?.forEach(line => {
           line.classList.remove('highlighted-line', 'past-line');
+          line.querySelectorAll('.lyriq-word').forEach(word => {
+            word.classList.remove('highlighted-word', 'past-word');
+          });
       });
       this.lyriqCurrentLineIndex = -1;
       // Reset padding when clearing highlights (e.g., on pause)
@@ -2728,7 +2807,6 @@ Follow these rules:
   }
 
   // --- Context Menu ---
-  // Fix: Added missing implementation for handleProjectContextMenu
   private handleProjectContextMenu(e: MouseEvent): void {
     e.preventDefault();
     e.stopPropagation();
@@ -2818,7 +2896,6 @@ Follow these rules:
       }
   }
 
-  // Fix: Added missing implementation for handleProjectTouchStart
   private handleProjectTouchStart(e: TouchEvent): void {
       this.handleNoteTouchEnd(); // Clear any existing timer
       const target = e.target as HTMLElement;
@@ -3103,7 +3180,7 @@ Follow these rules:
       // If paused, the animation loop isn't running, so we must manually update
       // the lyric highlight to reflect the new position.
       if (!this.lyriqIsPlaying) {
-        this.updateHighlightedLine(finalTime);
+        this.updateLyricHighlighting(finalTime);
       }
   }
 
@@ -3221,10 +3298,7 @@ Follow these rules:
           // Update all visual elements based on this single, accurate time source.
           this.updatePlayheadVisuals(currentTime);
           this.autoScrollView(currentTime);
-          
-          // Always use line-by-line highlighting as requested.
-          // The updateHighlightedLine method has its own internal checks for data availability.
-          this.updateHighlightedLine(currentTime);
+          this.updateLyricHighlighting(currentTime);
           
           if (this.lyriqDebugMode) {
             this.updateDebugPanel(currentTime);
@@ -3532,18 +3606,6 @@ Follow these rules:
       return `${minutes}:${paddedSeconds}.${paddedMs}`;
     }
     return `${minutes}:${paddedSeconds}`;
-  }
-
-  private blobToBase64(blob: Blob): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = (reader.result as string).split(',')[1];
-        resolve(base64String);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
   }
 
   private base64ToBlob(base64: string, mimeType: string): Blob {

@@ -1477,27 +1477,28 @@ body.light-mode .lyriq-action-btn.active {
   transition: 
     color var(--transition-normal), 
     transform var(--transition-normal), 
-    background-color var(--transition-normal), 
     opacity var(--transition-normal),
     text-shadow var(--transition-normal);
-  border-radius: 8px;
-  padding: 4px 8px;
 }
-
 .lyriq-line.past-line {
-  color: var(--color-text-secondary);
-  background: transparent;
-  transform: scale(1);
-  text-shadow: none;
+  color: var(--color-text-tertiary);
+  opacity: 0.7;
 }
 
 .lyriq-line.highlighted-line {
-  color: #fff;
-  background-color: var(--color-accent);
-  font-weight: bold;
-  transform: scale(1.035);
+  color: var(--color-text);
+  transform: scale(1.02);
   opacity: 1;
-  text-shadow: 0 2px 8px var(--color-accent), 0 0 1.5px #fff;
+}
+.lyriq-word {
+  transition: color 0.1s linear;
+}
+.lyriq-line.highlighted-line .lyriq-word.highlighted-word {
+  color: var(--color-accent);
+}
+
+.lyriq-line.past-line .lyriq-word {
+  color: var(--color-text-tertiary);
 }
 
 .edited-word {
