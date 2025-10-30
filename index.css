@@ -1485,33 +1485,9 @@ body.light-mode .lyriq-action-btn.active {
 }
 
 .lyriq-line.highlighted-line {
-  color: var(--color-text);
+  color: var(--color-accent);
   transform: scale(1.02);
   opacity: 1;
-}
-.lyriq-word {
-  transition: color 0.1s linear;
-}
-.lyriq-line.highlighted-line .lyriq-word.highlighted-word {
-  color: var(--color-accent);
-}
-
-.lyriq-line.past-line .lyriq-word {
-  color: var(--color-text-tertiary);
-}
-
-.edited-word {
-  color: var(--color-edited);
-  font-style: italic;
-  font-weight: 700;
-}
-.lyriq-line.highlighted-line .edited-word {
-  color: #fff;
-  background-color: var(--color-edited);
-  padding: 0 4px;
-  margin: 0 -4px; /* Counteract padding */
-  border-radius: 4px;
-  font-style: normal;
 }
 
 .lyriq-line.placeholder {
@@ -2147,64 +2123,87 @@ body.light-mode .lyriq-action-btn.active {
     padding: 24px 24px 100px;
   }
   .editor-title {
-      font-size: 20px;
+      font-size: 24px;
   }
-  .project-assignment-container { display: none; }
+  
+  .project-assignment-container {
+    display: none; /* Hide for simplicity on mobile */
+  }
+
+  .notes-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .list-view-fab-container {
+    bottom: 24px;
+    right: 24px;
+  }
+
+  .lyriq-song-info {
+    padding: 72px 16px 16px;
+  }
+  #lyriqSongTitle, #lyriqModalPeekTitle {
+    font-size: 20px;
+  }
+  .lyriq-line {
+    font-size: 20px;
+    padding: 0 16px;
+  }
+  
   .lyriq-player-view.editor-mode .lyriq-lyrics {
-      padding: 0 24px;
-      scroll-padding-bottom: 30vh;
+    padding: 0 24px;
+  }
+  
+  .recording-interface {
+    padding: 0 16px;
   }
 }
 
 @media (max-width: 768px) {
-    :root {
-      --lyriq-modal-peeking-height: 80px;
-      --lyriq-modal-expanded-height: 280px;
-    }
-    .header-right-cluster { display: none; }
-    .main-header {
-        justify-content: flex-start;
-    }
-    .notes-grid {
-      grid-template-columns: 1fr;
-    }
-    #lyriqSongTitle { font-size: 22px; }
-    .lyriq-line { font-size: 20px; }
-    .lyriq-peek-controls { gap: 8px; }
-    .lyriq-control-btn-scrub {
-      width: 40px;
-      height: 40px;
-      font-size: 20px;
-    }
-    .lyriq-expanded-controls { gap: 16px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lyriq-lyrics {
-    transition: none;
+  :root {
+    --sidebar-width: 260px;
   }
-}
 
-/* Spinner for processing */
-.record-button.is-processing::after {
-  content: '';
-  position: absolute;
-  width: 32px;
-  height: 32px;
-  top: 50%;
-  left: 50%;
-  margin: -16px 0 0 -16px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
+  .sidebar {
+    transform: translateX(calc(-1 * var(--sidebar-width)));
+  }
 
-body.is-processing .record-button .fa-microphone,
-body.is-processing .record-button .fa-stop {
-  opacity: 0;
-}
+  .main-header {
+    flex-wrap: wrap;
+    padding: 12px;
+    gap: 8px;
+  }
+  
+  .header-left-cluster, .header-right-cluster {
+    gap: 4px;
+  }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+  .editor-title {
+      flex-basis: 100%;
+      order: 3;
+      padding: 8px 0;
+      font-size: 22px;
+  }
+  
+  .action-button {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+  }
+
+  .lyriq-line {
+      font-size: 18px;
+  }
+
+  .lyriq-controls-modal.visible {
+      height: 280px;
+  }
+  
+  .lyriq-expanded-controls {
+    gap: 16px;
+  }
+
+  .notes-list-header h1 {
+    font-size: 24px;
+  }
 }

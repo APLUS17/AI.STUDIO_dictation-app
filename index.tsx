@@ -1167,7 +1167,7 @@ class VoiceNotesApp {
       </div>
       <div class="card-swipe-container">
         <div class="section-card-header">
-          <div class.section-type-dropdown">
+          <div class="section-type-dropdown">
             <button class="section-type-btn" aria-haspopup="true">
               <span>${section.type}</span>
               <i class="fas fa-chevron-down"></i>
@@ -2477,26 +2477,14 @@ class VoiceNotesApp {
   
   private renderSyncedLyrics(note: Note): void {
       this.lyricsContainer.innerHTML = '';
-      let wordIndex = 0;
-  
+      
       note.syncedLines?.forEach(line => {
           const lineEl = document.createElement('p');
           lineEl.className = 'lyriq-line';
-  
-          const lineText = line.editedText ?? line.text;
-          const wordsInLine = lineText.split(' ');
-          
-          let lineContent = '';
-          for (let i = 0; i < wordsInLine.length; i++) {
-              const timedWord = note.syncedWords?.[wordIndex];
-              if (timedWord) {
-                  lineContent += `<span class="lyriq-word" data-start="${timedWord.start}" data-end="${timedWord.end}">${timedWord.word}</span> `;
-                  wordIndex++;
-              }
-          }
-          lineEl.innerHTML = lineContent.trim();
+          lineEl.textContent = line.editedText ?? line.text;
           this.lyricsContainer.appendChild(lineEl);
       });
+  
       this.lyriqLineElements = Array.from(this.lyricsContainer.querySelectorAll('.lyriq-line'));
   }
 
@@ -2643,8 +2631,6 @@ class VoiceNotesApp {
       if (previousLine) {
         previousLine.classList.remove('highlighted-line');
         previousLine.classList.add('past-line');
-        // Mark all words in the old line as past
-        previousLine.querySelectorAll('.lyriq-word').forEach(wordEl => wordEl.classList.add('past-word'));
       }
       
       const activeLine = this.lyriqLineElements[newHighlightIndex];
@@ -2661,19 +2647,7 @@ class VoiceNotesApp {
       this.lyriqCurrentLineIndex = newHighlightIndex;
     }
     
-    // Word-by-word highlighting within the current line
-    const currentLineEl = this.lyriqLineElements[this.lyriqCurrentLineIndex];
-    if (currentLineEl && note.syncedWords) {
-        const wordElements = currentLineEl.querySelectorAll('.lyriq-word');
-        wordElements.forEach(wordEl => {
-            const wordStart = parseFloat((wordEl as HTMLElement).dataset.start!);
-            if (currentTime >= wordStart) {
-                wordEl.classList.add('highlighted-word');
-            } else {
-                wordEl.classList.remove('highlighted-word');
-            }
-        });
-    }
+    // Word-by-word highlighting has been removed as requested.
 
     if (newHighlightIndex === -1) {
         this.clearLyricHighlight();
@@ -2683,9 +2657,6 @@ class VoiceNotesApp {
   private clearLyricHighlight(): void {
       this.lyriqLineElements?.forEach(line => {
           line.classList.remove('highlighted-line', 'past-line');
-          line.querySelectorAll('.lyriq-word').forEach(word => {
-            word.classList.remove('highlighted-word', 'past-word');
-          });
       });
       this.lyriqCurrentLineIndex = -1;
   }
