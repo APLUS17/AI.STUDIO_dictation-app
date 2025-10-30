@@ -428,6 +428,12 @@ class VoiceNotesApp {
   private currentSwipeContainer: HTMLElement | null = null;
   private readonly SWIPE_THRESHOLD = -80; // pixels
 
+  // Drag and drop properties
+  private isDraggingCard = false;
+  private draggedCard: HTMLElement | null = null;
+  private placeholderCard: HTMLElement | null = null;
+  private dragOffsetY = 0;
+
 
   constructor() {
     // Initialize AI Helper
@@ -647,10 +653,9 @@ class VoiceNotesApp {
     });
     this.addSectionBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.addSection(); });
     
-    // Swipe to delete listeners
+    // Swipe to delete & Drag/Drop listeners
     this.songStructureEditor.addEventListener('mousedown', this.handleCardInteractionStart);
     this.songStructureEditor.addEventListener('touchstart', this.handleCardInteractionStart, { passive: false });
-    this.songStructureEditor.addEventListener('dragstart', (e) => e.preventDefault());
 
 
     // Notes list view controls
@@ -733,9 +738,11 @@ class VoiceNotesApp {
     window.addEventListener('keydown', (e) => this.handleKeyDown(e));
     document.addEventListener('click', (e) => {
       this.hideContextMenu();
-      document.querySelectorAll('.section-type-dropdown.open').forEach(dropdown => {
-        if (!dropdown.contains(e.target as Node)) {
+      document.querySelectorAll('.song-section-card.dropdown-is-open').forEach(card => {
+        const dropdown = card.querySelector('.section-type-dropdown');
+        if (dropdown && !dropdown.contains(e.target as Node)) {
           dropdown.classList.remove('open');
+          card.classList.remove('dropdown-is-open');
         }
       });
       // Hide takes menu on outside click
@@ -1167,13 +1174,14 @@ class VoiceNotesApp {
       </div>
       <div class="card-swipe-container">
         <div class="section-card-header">
+           <div class="drag-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></div>
           <div class="section-type-dropdown">
             <button class="section-type-btn" aria-haspopup="true">
               <span>${section.type}</span>
               <i class="fas fa-chevron-down"></i>
             </button>
             <ul class="section-type-menu" role="menu">
-              ${['Verse', 'Chorus', 'Bridge', 'Intro', 'Outro', 'Pre-Chorus', 'Hook', 'Solo'].map(type => `<li><button role="menuitem">${type}</button></li>`).join('')}
+              ${['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Outro', 'Hook', 'Solo'].map(type => `<li><button role="menuitem">${type}</button></li>`).join('')}
             </ul>
           </div>
           <div class="section-header-actions">
@@ -1230,7 +1238,19 @@ class VoiceNotesApp {
     if (target.closest('.section-type-btn')) {
       this.triggerHapticFeedback();
       e.stopPropagation();
-      target.closest('.section-type-dropdown')?.classList.toggle('open');
+      const dropdown = target.closest('.section-type-dropdown');
+      const isOpening = !dropdown?.classList.contains('open');
+
+      // Close all other dropdowns and remove the elevated z-index class
+      this.songStructureEditor.querySelectorAll<HTMLElement>('.song-section-card.dropdown-is-open').forEach(openCard => {
+          openCard.classList.remove('dropdown-is-open');
+          openCard.querySelector('.section-type-dropdown')?.classList.remove('open');
+      });
+
+      if (isOpening) {
+        dropdown?.classList.add('open');
+        card.classList.add('dropdown-is-open');
+      }
     }
     
     // Handle record take button click
@@ -1262,6 +1282,7 @@ class VoiceNotesApp {
         this.saveNoteState();
       }
       target.closest('.section-type-dropdown')?.classList.remove('open');
+      card.classList.remove('dropdown-is-open');
     }
 
     // Handle collapse on header click (if not on a button or dropdown)
@@ -1271,11 +1292,18 @@ class VoiceNotesApp {
     }
   }
 
-  // --- Swipe To Delete ---
+  // --- Swipe To Delete & Drag/Drop ---
   private handleCardInteractionStart = (e: MouseEvent | TouchEvent): void => {
     const target = e.target as HTMLElement;
-    // Don't start a swipe if interacting with buttons, dropdowns, or contenteditable areas
-    if (target.closest('button, [contenteditable="true"], .section-type-dropdown')) {
+
+    // Delegate to drag handler if handle is pressed
+    if (target.closest('.drag-handle')) {
+        this.initDrag(e);
+        return;
+    }
+
+    // Don't start a swipe if interacting with buttons, dropdowns, content, or drag handle
+    if (target.closest('button, [contenteditable="true"], .section-type-dropdown, .drag-handle')) {
         return;
     }
     
@@ -1289,7 +1317,6 @@ class VoiceNotesApp {
     this.swipeStartX = this.getPointerX(e);
     this.swipeStartTime = Date.now();
     
-    // Disable transition during drag
     this.currentSwipeContainer.style.transition = 'none';
 
     document.addEventListener('mousemove', this.handleCardInteractionMove);
@@ -1300,20 +1327,11 @@ class VoiceNotesApp {
 
   private handleCardInteractionMove = (e: MouseEvent | TouchEvent): void => {
       if (!this.isSwiping || !this.currentSwipeContainer) return;
-      
       e.preventDefault();
-
       const currentX = this.getPointerX(e);
       let deltaX = currentX - this.swipeStartX;
-
-      // Only allow swiping left
-      if (deltaX > 0) {
-          deltaX = 0;
-      }
-
-      // Clamp the swipe distance
-      deltaX = Math.max(deltaX, this.SWIPE_THRESHOLD - 30); // Allow over-swipe a bit for feel
-
+      if (deltaX > 0) deltaX = 0;
+      deltaX = Math.max(deltaX, this.SWIPE_THRESHOLD - 30);
       this.currentSwipeContainer.style.transform = `translateX(${deltaX}px)`;
   }
 
@@ -1324,24 +1342,133 @@ class VoiceNotesApp {
       const currentX = this.getPointerX(e);
       const deltaX = currentX - this.swipeStartX;
 
-      // Re-enable transition for snap-back
       this.currentSwipeContainer.style.transition = 'transform var(--transition-fast)';
 
       if (deltaX < this.SWIPE_THRESHOLD) {
-          // Delete the card
           this.deleteSectionCard(this.currentSwipeCard);
       } else {
-          // Snap back
           this.currentSwipeContainer.style.transform = 'translateX(0px)';
       }
 
-      // Clean up
       this.currentSwipeCard = null;
       this.currentSwipeContainer = null;
       document.removeEventListener('mousemove', this.handleCardInteractionMove);
       document.removeEventListener('touchmove', this.handleCardInteractionMove);
       document.removeEventListener('mouseup', this.handleCardInteractionEnd);
       document.removeEventListener('touchend', this.handleCardInteractionEnd);
+  }
+  
+  private initDrag = (e: MouseEvent | TouchEvent): void => {
+    e.preventDefault();
+    const card = (e.target as HTMLElement).closest<HTMLElement>('.song-section-card');
+    if (!card || this.isDraggingCard) return;
+
+    this.draggedCard = card;
+    this.isDraggingCard = true;
+
+    const rect = card.getBoundingClientRect();
+    this.dragOffsetY = this.getPointerY(e) - rect.top;
+
+    this.placeholderCard = document.createElement('div');
+    this.placeholderCard.className = 'song-section-card-placeholder';
+    this.placeholderCard.style.height = `${rect.height}px`;
+
+    card.parentElement!.insertBefore(this.placeholderCard, card);
+    
+    card.classList.add('dragging');
+    card.style.width = `${rect.width}px`;
+    card.style.top = `${card.offsetTop}px`;
+
+    // A small delay to allow the DOM to update before starting move calcs
+    requestAnimationFrame(() => {
+        document.addEventListener('mousemove', this.handleDragMove);
+        document.addEventListener('touchmove', this.handleDragMove, { passive: false });
+        document.addEventListener('mouseup', this.handleDragEnd);
+        document.addEventListener('touchend', this.handleDragEnd);
+    });
+  }
+
+  private handleDragMove = (e: MouseEvent | TouchEvent): void => {
+      if (!this.isDraggingCard || !this.draggedCard) return;
+      e.preventDefault();
+
+      const pointerY = this.getPointerY(e);
+      const containerRect = this.songStructureEditor.getBoundingClientRect();
+      this.draggedCard.style.top = `${pointerY - containerRect.top - this.dragOffsetY}px`;
+
+      const cards = [...this.songStructureEditor.querySelectorAll('.song-section-card:not(.dragging)')] as HTMLElement[];
+      
+      let closestCard: HTMLElement | null = null;
+      let smallestDistance = Infinity;
+
+      cards.forEach(card => {
+          const rect = card.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          const distance = Math.abs(pointerY - midY);
+          if (distance < smallestDistance) {
+              smallestDistance = distance;
+              closestCard = card;
+          }
+      });
+      
+      if (closestCard) {
+          const rect = closestCard.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          if (pointerY < midY) {
+              closestCard.parentElement!.insertBefore(this.placeholderCard!, closestCard);
+          } else {
+              closestCard.parentElement!.insertBefore(this.placeholderCard!, closestCard.nextSibling);
+          }
+      }
+  }
+
+  private handleDragEnd = (): void => {
+      if (!this.isDraggingCard || !this.draggedCard) return;
+
+      this.isDraggingCard = false;
+      
+      this.draggedCard.classList.remove('dragging');
+      this.draggedCard.style.width = '';
+      this.draggedCard.style.top = '';
+
+      if (this.placeholderCard) {
+          this.placeholderCard.parentElement!.replaceChild(this.draggedCard, this.placeholderCard);
+      }
+      
+      this.draggedCard = null;
+      this.placeholderCard = null;
+
+      document.removeEventListener('mousemove', this.handleDragMove);
+      document.removeEventListener('touchmove', this.handleDragMove);
+      document.removeEventListener('mouseup', this.handleDragEnd);
+      document.removeEventListener('touchend', this.handleDragEnd);
+
+      this.reorderSectionsAfterDrag();
+  }
+  
+  private reorderSectionsAfterDrag(): void {
+    if (!this.currentNoteId) return;
+    const note = this.notes.get(this.currentNoteId);
+    if (!note) return;
+
+    const cards = this.songStructureEditor.querySelectorAll('.song-section-card');
+    const newSections: NoteSection[] = [];
+    const oldSectionsCopy = [...note.sections];
+
+    cards.forEach(card => {
+        const oldIndex = parseInt((card as HTMLElement).dataset.index!, 10);
+        newSections.push(oldSectionsCopy[oldIndex]);
+    });
+
+    note.sections = newSections;
+
+    // Re-index the data-index attributes in the DOM for future operations
+    cards.forEach((card, index) => {
+        (card as HTMLElement).dataset.index = index.toString();
+    });
+
+    this.saveDataToStorage();
+    this.saveNoteState();
   }
 
   private deleteSectionCard(card: HTMLElement): void {
@@ -1352,7 +1479,6 @@ class VoiceNotesApp {
           this.updateCurrentNoteContent(); // Save state before deleting
           this.saveNoteState();
           
-          // Apply animation for deletion
           card.style.transition = 'opacity 0.3s ease, max-height 0.4s ease, margin 0.4s ease, padding 0.4s ease';
           if (card.querySelector('.card-swipe-container')) {
               (card.querySelector('.card-swipe-container') as HTMLElement).style.transition = 'transform 0.3s ease';
@@ -1360,8 +1486,8 @@ class VoiceNotesApp {
           }
           card.style.opacity = '0';
           card.style.maxHeight = '0px';
-          card.style.margin = '0'; // Collapse margin
-          card.style.padding = '0'; // Collapse padding
+          card.style.margin = '0';
+          card.style.padding = '0';
 
           setTimeout(() => {
               note.sections.splice(index, 1);
@@ -1370,7 +1496,7 @@ class VoiceNotesApp {
               this.songStructureEditor.querySelectorAll<HTMLDivElement>('.song-section-card').forEach((c, i) => c.dataset.index = i.toString());
               this.saveDataToStorage();
               this.saveNoteState(); // Save state after deleting
-          }, 400); // Match transition duration
+          }, 400);
       }
   }
 
@@ -2477,14 +2603,26 @@ class VoiceNotesApp {
   
   private renderSyncedLyrics(note: Note): void {
       this.lyricsContainer.innerHTML = '';
-      
+      let wordIndex = 0;
+  
       note.syncedLines?.forEach(line => {
           const lineEl = document.createElement('p');
           lineEl.className = 'lyriq-line';
-          lineEl.textContent = line.editedText ?? line.text;
+  
+          const lineText = line.editedText ?? line.text;
+          const wordsInLine = lineText.split(' ');
+          
+          let lineContent = '';
+          for (let i = 0; i < wordsInLine.length; i++) {
+              const timedWord = note.syncedWords?.[wordIndex];
+              if (timedWord) {
+                  lineContent += `<span class="lyriq-word" data-start="${timedWord.start}" data-end="${timedWord.end}">${timedWord.word}</span> `;
+                  wordIndex++;
+              }
+          }
+          lineEl.innerHTML = lineContent.trim();
           this.lyricsContainer.appendChild(lineEl);
       });
-  
       this.lyriqLineElements = Array.from(this.lyricsContainer.querySelectorAll('.lyriq-line'));
   }
 
@@ -2631,6 +2769,8 @@ class VoiceNotesApp {
       if (previousLine) {
         previousLine.classList.remove('highlighted-line');
         previousLine.classList.add('past-line');
+        // Mark all words in the old line as past
+        previousLine.querySelectorAll('.lyriq-word').forEach(wordEl => wordEl.classList.add('past-word'));
       }
       
       const activeLine = this.lyriqLineElements[newHighlightIndex];
@@ -2647,7 +2787,19 @@ class VoiceNotesApp {
       this.lyriqCurrentLineIndex = newHighlightIndex;
     }
     
-    // Word-by-word highlighting has been removed as requested.
+    // Word-by-word highlighting within the current line
+    const currentLineEl = this.lyriqLineElements[this.lyriqCurrentLineIndex];
+    if (currentLineEl && note.syncedWords) {
+        const wordElements = currentLineEl.querySelectorAll('.lyriq-word');
+        wordElements.forEach(wordEl => {
+            const wordStart = parseFloat((wordEl as HTMLElement).dataset.start!);
+            if (currentTime >= wordStart) {
+                wordEl.classList.add('highlighted-word');
+            } else {
+                wordEl.classList.remove('highlighted-word');
+            }
+        });
+    }
 
     if (newHighlightIndex === -1) {
         this.clearLyricHighlight();
@@ -2657,6 +2809,9 @@ class VoiceNotesApp {
   private clearLyricHighlight(): void {
       this.lyriqLineElements?.forEach(line => {
           line.classList.remove('highlighted-line', 'past-line');
+          line.querySelectorAll('.lyriq-word').forEach(word => {
+            word.classList.remove('highlighted-word', 'past-word');
+          });
       });
       this.lyriqCurrentLineIndex = -1;
   }

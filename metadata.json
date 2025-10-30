@@ -1,6 +1,6 @@
 {
-  "name": "Copy of Dictation App(LYRIQ)",
-  "description": "Effortless dictation powered by Gemini. Turn long rambling recordings into perfectly transcribed notes. Oorrrrrr songs",
+  "name": "(LYRIQ)",
+  "description": "Songs start here.",
   "requestFramePermissions": [
     "microphone"
   ],
