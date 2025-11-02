@@ -1427,9 +1427,10 @@ body.recording-modal-active .editor-fab-container {
 }
 .lyriq-header {
   padding: 16px 24px;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
+  gap: 16px;
   position: absolute;
   top: 0; left: 0; right: 0;
   z-index: 20;
@@ -1463,17 +1464,14 @@ body.light-mode .lyriq-action-btn.active {
   opacity: 0.9;
 }
 
-.lyriq-song-info {
-  text-align: center;
-  padding: 80px 24px 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-}
 #lyriqSongTitle {
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
 }
 #lyriqSongSubtitle {
   font-size: 16px;
@@ -1484,7 +1482,7 @@ body.light-mode .lyriq-action-btn.active {
 .lyriq-lyrics {
   flex: 1;
   overflow-y: auto;
-  padding: 0 24px;
+  padding: 80px 24px 24px;
   text-align: center;
   min-height: 0;
   scroll-padding-top: var(--lyriq-scroll-focus-point);
@@ -1562,7 +1560,7 @@ body.light-mode .lyriq-action-btn.active {
 /* Lyriq Editor Mode */
 .lyriq-player-view.editor-mode .lyriq-lyrics {
   text-align: left;
-  padding: 0 40px;
+  padding: 80px 40px 24px;
   scroll-padding-bottom: 30vh;
 }
 .lyriq-player-view.editor-mode .lyriq-line,
@@ -2138,7 +2136,7 @@ body.light-mode .lyriq-action-btn.active {
     padding: 16px;
   }
   .lyriq-player-view.editor-mode .lyriq-lyrics {
-    padding: 0 24px;
+    padding: 80px 24px 24px;
   }
   .list-view-fab-container {
     bottom: 24px;
@@ -2169,11 +2167,11 @@ body.light-mode .lyriq-action-btn.active {
     padding: 16px 16px 90px;
   }
 
-  .lyriq-song-info {
-    padding-top: 70px;
-  }
   #lyriqSongTitle {
-    font-size: 24px;
+    font-size: 18px;
+  }
+  .lyriq-lyrics {
+    padding-top: 70px;
   }
   .lyriq-line {
     font-size: 20px;
