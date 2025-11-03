@@ -36,7 +36,6 @@
           <div class="sidebar-section">
              <ul class="sidebar-list">
                 <li><a href="#" class="sidebar-link" id="allNotesButton"><i class="fas fa-book-open"></i><span>Library</span></a></li>
-                <li><a href="#" class="sidebar-link" id="lyriqPlayerButton"><i class="fas fa-compact-disc"></i><span>Lyriq Player</span></a></li>
               </ul>
           </div>
           <div class="sidebar-section">
@@ -68,20 +67,10 @@
             <div class="editor-title" contenteditable="true" placeholder="Untitled Note">
               Untitled Note
             </div>
-            <div class="project-assignment-container" id="projectAssignmentContainer">
-              <button id="projectAssignmentButton" class="project-assignment-btn">
-                <i class="fas fa-folder"></i>
-                <span id="projectAssignmentText">No Project</span>
-                <i class="fas fa-chevron-down"></i>
-              </button>
-              <div id="projectAssignmentMenu" class="project-assignment-menu">
-                <!-- Populated by JS -->
-              </div>
-            </div>
           </div>
           <div class="header-right-cluster">
-            <button class="action-button" id="sendToLyriqButton" title="Open in Lyriq Player">
-              <i class="fas fa-headphones-alt"></i>
+            <button class="action-button" id="viewToggleButton" title="Switch to Lyriq Player">
+              <i class="fas fa-compact-disc"></i>
             </button>
             <button class="action-button" id="formatToggleButton" title="Toggle Format">
               <i class="fas fa-file-alt"></i>
@@ -159,9 +148,14 @@
               <div class="lyriq-song-info">
                 <h1 id="lyriqSongTitle">Untitled Note</h1>
               </div>
-              <button class="lyriq-action-btn" id="lyriqModeToggleBtn" title="Editor Mode">
-                  <i class="fas fa-edit"></i>
-              </button>
+              <div class="lyriq-header-actions">
+                <button class="lyriq-action-btn" id="lyriqViewToggleButton" title="Switch to Editor">
+                    <i class="fas fa-pen-alt"></i>
+                </button>
+                <button class="lyriq-action-btn" id="lyriqModeToggleBtn" title="Editor Mode">
+                    <i class="fas fa-edit"></i>
+                </button>
+              </div>
           </div>
       
           <div id="lyricsContainer" class="lyriq-lyrics">

@@ -582,84 +582,6 @@ body {
   flex-direction: column;
 }
 
-/* Project Assignment Dropdown */
-.project-assignment-container {
-  position: relative;
-  margin-left: 16px;
-}
-.project-assignment-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-.project-assignment-btn:hover {
-  border-color: var(--color-accent);
-  color: var(--color-text);
-}
-.project-assignment-btn .fa-chevron-down {
-  font-size: 12px;
-  transition: transform var(--transition-slow);
-}
-.project-assignment-container.open .project-assignment-btn .fa-chevron-down {
-  transform: rotate(180deg);
-}
-
-.project-assignment-menu {
-  position: absolute;
-  top: 110%;
-  left: 0;
-  background-color: var(--color-bg-alt);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  list-style: none;
-  padding: 8px;
-  margin: 0;
-  z-index: 1000;
-  box-shadow: var(--shadow-md);
-  opacity: 0;
-  transform: translateY(10px);
-  pointer-events: none;
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
-  min-width: 200px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-.project-assignment-container.open .project-assignment-menu {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-.project-assignment-menu-item {
-  width: 100%;
-  text-align: left;
-  padding: 8px 12px;
-  border: none;
-  background: transparent;
-  color: var(--color-text);
-  cursor: pointer;
-  border-radius: 6px;
-  font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.project-assignment-menu-item:hover {
-  background-color: var(--color-surface-active);
-}
-.project-assignment-menu-separator {
-  height: 1px;
-  background: var(--color-border);
-  margin: 4px 0;
-}
-
 /* --- Song Structure Editor --- */
 #songStructureEditor {
   display: flex;
@@ -1466,6 +1388,11 @@ body.recording-modal-active .editor-fab-container {
   border: none;
   backdrop-filter: none;
 }
+.lyriq-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .lyriq-action-btn {
   width: 36px; height: 36px;
   background: transparent;
@@ -2153,10 +2080,7 @@ body.light-mode .lyriq-action-btn.active {
     padding-left: 24px;
     padding-right: 24px;
   }
-  .header-right-cluster {
-    display: none; /* Hide for simplicity on mobile, actions in sidebar */
-  }
-  .project-assignment-container {
+  .header-right-cluster .action-button:not(#viewToggleButton) {
     display: none;
   }
   .lyriq-player-view.editor-mode .lyriq-lyrics {
