@@ -102,9 +102,18 @@
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
-  --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 0.45s cubic-bezier(0.50, 0, 0.20, 1);
-  --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  --duration-fast: 220ms;
+  --duration-normal: 350ms;
+  --duration-slow: 500ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-decelerate: cubic-bezier(0.0, 0, 0.2, 1);
+  --ease-accelerate: cubic-bezier(0.4, 0, 1, 1);
+  --ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --transition-fast: var(--duration-fast) var(--ease-standard);
+  --transition-normal: var(--duration-normal) var(--ease-standard);
+  --transition-slow: var(--duration-slow) var(--ease-standard);
   --transition-tabs: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
@@ -436,7 +445,8 @@ body {
   z-index: 999; /* Below sidebar, above content */
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--transition-normal);
+  transition: opacity var(--duration-normal) var(--ease-decelerate);
+  will-change: opacity;
 }
 
 .main-content {
@@ -707,7 +717,12 @@ body {
   background-color: var(--note-card-bg);
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  transition: transform var(--transition-fast);
+  transition: transform var(--duration-fast) var(--ease-decelerate), box-shadow var(--duration-fast) var(--ease-decelerate);
+}
+
+.song-section-card:hover .card-swipe-container {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .section-card-header {
@@ -762,7 +777,7 @@ body {
 
 .section-content-wrapper {
   max-height: 1000px; /* Set a large max-height for transition */
-  transition: max-height var(--transition-slow), padding var(--transition-slow);
+  transition: max-height var(--duration-normal) var(--ease-standard), padding var(--duration-normal) var(--ease-standard);
   padding: 0 16px 16px;
   overflow: hidden;
 }
@@ -796,7 +811,7 @@ body {
 }
 .section-type-btn .fa-chevron-down {
   font-size: 12px;
-  transition: transform var(--transition-slow);
+  transition: transform var(--duration-normal) var(--ease-standard);
 }
 .section-type-dropdown.open .section-type-btn .fa-chevron-down {
   transform: rotate(180deg);
@@ -1022,7 +1037,8 @@ body {
   border-top-right-radius: 24px;
   z-index: 100;
   transform: translateY(100%);
-  transition: transform var(--transition-slow);
+  transition: transform var(--duration-slow) var(--ease-overshoot);
+  will-change: transform;
   padding: 0 24px;
   box-shadow: 0 -5px 30px rgba(0,0,0,0.3);
 }
@@ -1383,7 +1399,8 @@ body.light-mode .library-tab-btn.active {
   left: 50%;
   transform: translateX(-50%);
   z-index: 100;
-  transition: transform var(--transition-normal), opacity var(--transition-normal);
+  transition: transform var(--duration-slow) var(--ease-overshoot), opacity var(--duration-slow) var(--ease-overshoot);
+  will-change: transform, opacity;
 }
 
 .editor-fab {
@@ -1421,38 +1438,51 @@ body.recording-modal-active .editor-fab-container {
 /* --- Lyriq Player --- */
 .lyriq-player-view {
   flex-direction: column;
-  background-color: #000;
+  background-color: var(--color-bg);
   color: var(--color-text);
-  overflow: hidden;
+  overflow-y: auto;
+  scroll-padding-top: var(--lyriq-scroll-focus-point);
 }
 .lyriq-header {
-  padding: 16px 24px;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  padding: 16px 40px;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 16px;
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  z-index: 20;
+  flex-shrink: 0;
+  background-color: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.lyriq-song-info {
+  flex-grow: 1;
+  min-width: 0;
+  text-align: center;
 }
 .lyriq-header .sidebar-toggle-button {
   display: flex;
-  background-color: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(10px);
+  background-color: transparent;
+  border: none;
+  backdrop-filter: none;
 }
 .lyriq-action-btn {
   width: 36px; height: 36px;
-  background-color: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(10px);
+  background: transparent;
+  border: none;
   border-radius: 50%;
-  color: var(--color-text);
+  color: var(--color-text-secondary);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
 }
-.lyriq-action-btn:hover { background-color: var(--color-surface-hover); }
+.lyriq-action-btn:hover {
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+.lyriq-action-btn:active {
+  transform: scale(0.92);
+}
 .lyriq-action-btn.active {
   background-color: var(--color-accent);
   color: #fff;
@@ -1465,9 +1495,8 @@ body.light-mode .lyriq-action-btn.active {
 }
 
 #lyriqSongTitle {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 600;
-  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1481,12 +1510,9 @@ body.light-mode .lyriq-action-btn.active {
 
 .lyriq-lyrics {
   flex: 1;
-  overflow-y: auto;
-  padding: 80px 24px 24px;
+  padding: 24px 40px var(--lyriq-modal-peeking-height);
   text-align: center;
   min-height: 0;
-  scroll-padding-top: var(--lyriq-scroll-focus-point);
-  scroll-padding-bottom: calc(100vh - var(--lyriq-scroll-focus-point) - 100px);
 }
 .lyriq-line {
   font-size: 22px;
@@ -2106,7 +2132,8 @@ body.light-mode .lyriq-action-btn.active {
     z-index: 1000;
     margin-left: 0;
     transform: translateX(calc(-1 * var(--sidebar-width)));
-    transition: transform var(--transition-normal);
+    transition: transform var(--duration-normal) var(--ease-decelerate);
+    will-change: transform;
   }
   .app-container.sidebar-collapsed .sidebar {
     transform: translateX(calc(-1 * var(--sidebar-width)));
@@ -2122,7 +2149,7 @@ body.light-mode .lyriq-action-btn.active {
   .sidebar-toggle-button {
     display: flex;
   }
-  .main-header, .note-content-wrapper {
+  .main-header, .lyriq-header, .note-content-wrapper, .lyriq-lyrics {
     padding-left: 24px;
     padding-right: 24px;
   }
@@ -2131,9 +2158,6 @@ body.light-mode .lyriq-action-btn.active {
   }
   .project-assignment-container {
     display: none;
-  }
-  .lyriq-header {
-    padding: 16px;
   }
   .lyriq-player-view.editor-mode .lyriq-lyrics {
     padding: 80px 24px 24px;
@@ -2168,10 +2192,11 @@ body.light-mode .lyriq-action-btn.active {
   }
 
   #lyriqSongTitle {
-    font-size: 18px;
+    font-size: 20px;
   }
   .lyriq-lyrics {
-    padding-top: 70px;
+    padding-top: 16px;
+    padding-bottom: 96px;
   }
   .lyriq-line {
     font-size: 20px;
