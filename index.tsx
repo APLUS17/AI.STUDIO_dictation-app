@@ -67,7 +67,7 @@ function groupWordsIntoLines(words: TimedWord[]): TimedLine[] {
 
 
 // --- AI Helper Class for Gemini API interactions ---
-const AI_MODEL_NAME = 'gemini-2.5-flash';
+const AI_MODEL_NAME = 'gemini-flash-lite-latest';
 
 class AIHelper {
   private genAI: GoogleGenAI;
@@ -377,8 +377,13 @@ class VoiceNotesApp {
   private beatAudioBuffer: AudioBuffer | null = null;
   private vocalAudioBuffer: AudioBuffer | null = null;
   
+  // Volume State
+  private beatVolume = 1.0;
+  private vocalVolume = 1.0;
+
   // Scrubbing State
   private isScrubbing = false;
+  private seekDebounceTimer: number | null = null;
   
   // Volume Drag State
   private isVolumeViewActive = false;
@@ -551,6 +556,10 @@ class VoiceNotesApp {
     this.loadDataFromStorage();
     this.setActiveMixerTrack('beat');
     this.updateLyriqControlsState();
+
+    // Initialize player volume from state
+    this.lyriqAudioPlayer.volume = this.beatVolume;
+    this.lyriqVocalAudioPlayer.volume = this.vocalVolume;
 
     // Initialize app state
     (async () => {
@@ -2714,13 +2723,15 @@ class VoiceNotesApp {
   private handleRewind = (): void => {
       if (!this.lyriqAudioPlayer || isNaN(this.lyriqAudioPlayer.currentTime)) return;
       const newTime = Math.max(0, this.lyriqAudioPlayer.currentTime - 15);
-      this.handleWaveformScrub(newTime * this.PIXELS_PER_SECOND);
+      this.setAudioTime(newTime);
+      this.updatePlayheadVisuals(newTime);
   }
 
   private handleForward = (): void => {
       if (!this.lyriqAudioPlayer || isNaN(this.lyriqAudioPlayer.duration) || isNaN(this.lyriqAudioPlayer.currentTime)) return;
       const newTime = Math.min(this.lyriqAudioPlayer.duration, this.lyriqAudioPlayer.currentTime + 15);
-      this.handleWaveformScrub(newTime * this.PIXELS_PER_SECOND);
+      this.setAudioTime(newTime);
+      this.updatePlayheadVisuals(newTime);
   }
 
   private handleLyriqMetadataLoaded(): void {
@@ -2863,11 +2874,13 @@ class VoiceNotesApp {
       const newVolume = Math.max(0, Math.min(1, (x - rect.left) / rect.width));
   
       if (this.draggingVolumeTrack === 'beat') {
-          this.lyriqAudioPlayer.volume = newVolume;
-          this.lyriqAudioPlayer.muted = newVolume === 0;
+          this.beatVolume = newVolume;
+          this.lyriqAudioPlayer.volume = this.beatVolume;
+          this.lyriqAudioPlayer.muted = this.beatVolume === 0;
       } else {
-          this.lyriqVocalAudioPlayer.volume = newVolume;
-          this.lyriqVocalAudioPlayer.muted = newVolume === 0;
+          this.vocalVolume = newVolume;
+          this.lyriqVocalAudioPlayer.volume = this.vocalVolume;
+          this.lyriqVocalAudioPlayer.muted = this.vocalVolume === 0;
       }
       this.updateVolumeMixerUI();
   }
@@ -2884,8 +2897,8 @@ class VoiceNotesApp {
   }
   
   private updateVolumeMixerUI(): void {
-      const beatVolume = this.lyriqAudioPlayer.muted ? 0 : this.lyriqAudioPlayer.volume;
-      const vocalVolume = this.lyriqVocalAudioPlayer.muted ? 0 : this.lyriqVocalAudioPlayer.volume;
+      const beatVolume = this.beatVolume;
+      const vocalVolume = this.vocalVolume;
   
       this.beatVolumeFill.style.width = `${beatVolume * 100}%`;
       this.beatVolumePercentage.textContent = `${Math.round(beatVolume * 100)}%`;
@@ -3349,6 +3362,33 @@ class VoiceNotesApp {
         this.longPressTimer = null;
     }
   }
+
+  private setAudioTime(time: number): void {
+    const duration = this.lyriqAudioPlayer.duration || Infinity;
+    const clampedTime = Math.max(0, Math.min(time, duration));
+    if (isFinite(clampedTime)) {
+        if (this.lyriqAudioPlayer.readyState > 0) {
+            this.lyriqAudioPlayer.currentTime = clampedTime;
+        }
+        if (this.lyriqVocalAudioPlayer.src && this.lyriqVocalAudioPlayer.readyState > 0) {
+            this.lyriqVocalAudioPlayer.currentTime = clampedTime;
+        }
+    }
+  }
+  
+  private debouncedSeek = (time: number): void => {
+      if (this.seekDebounceTimer) clearTimeout(this.seekDebounceTimer);
+      this.seekDebounceTimer = window.setTimeout(() => {
+          this.setAudioTime(time);
+      }, 50);
+  }
+
+  private cancelDebouncedSeek(): void {
+      if (this.seekDebounceTimer) {
+          clearTimeout(this.seekDebounceTimer);
+          this.seekDebounceTimer = null;
+      }
+  }
   
   private handleScrubStart = (e: MouseEvent | TouchEvent): void => {
     if (e instanceof MouseEvent && e.button !== 0) return;
@@ -3375,13 +3415,27 @@ class VoiceNotesApp {
     const rect = this.lyriqWaveforms.getBoundingClientRect();
     const scrollLeft = this.lyriqWaveforms.scrollLeft;
     const newPosition = x - rect.left + scrollLeft;
+    const newTime = newPosition / this.PIXELS_PER_SECOND;
     
-    this.handleWaveformScrub(newPosition);
+    this.updatePlayheadVisuals(newTime);
+    this.debouncedSeek(newTime);
   }
 
-  private handleScrubEnd = (): void => {
+  private handleScrubEnd = (e: MouseEvent | TouchEvent): void => {
       if (!this.isScrubbing) return;
       
+      this.cancelDebouncedSeek();
+
+      const x = 'changedTouches' in e ? e.changedTouches[0].clientX : e.clientX;
+      const rect = this.lyriqWaveforms.getBoundingClientRect();
+      const scrollLeft = this.lyriqWaveforms.scrollLeft;
+      const finalPosition = x - rect.left + scrollLeft;
+      const finalTime = finalPosition / this.PIXELS_PER_SECOND;
+
+      // Final, precise update
+      this.setAudioTime(finalTime);
+      this.updatePlayheadVisuals(finalTime);
+
       this.isScrubbing = false;
       this.lyriqWaveforms.style.cursor = 'grab';
 
@@ -3395,29 +3449,15 @@ class VoiceNotesApp {
       document.removeEventListener('mouseup', this.handleScrubEnd);
       document.removeEventListener('touchend', this.handleScrubEnd);
   }
-  
-  private handleWaveformScrub(newPositionPx: number): void {
-      const newTime = newPositionPx / this.PIXELS_PER_SECOND;
-      const duration = this.lyriqAudioPlayer.duration || Infinity;
-      const clampedTime = Math.max(0, Math.min(newTime, duration));
-
-      if (isFinite(clampedTime)) {
-          this.lyriqAudioPlayer.currentTime = clampedTime;
-          if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.currentTime = clampedTime;
-          this.updatePlayheadVisuals(clampedTime);
-      }
-  }
 
   private handleWaveformScroll = (): void => {
     if (this.isScrubbing) return;
     const scrollLeft = this.lyriqWaveforms.scrollLeft;
     const newTime = scrollLeft / this.PIXELS_PER_SECOND;
     
-    if (isFinite(newTime)) {
-      this.lyriqAudioPlayer.currentTime = newTime;
-      if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.currentTime = newTime;
-      this.updatePlayheadVisuals(newTime);
-    }
+    // Immediate visual update, debounced audio seek for performance
+    this.updatePlayheadVisuals(newTime);
+    this.debouncedSeek(newTime);
   }
   
   private handleKeyDown(e: KeyboardEvent): void {
@@ -3508,13 +3548,14 @@ class VoiceNotesApp {
         return;
     };
     
-    const formattedTime = this.formatTime(time * 1000);
+    const clampedTime = Math.max(0, Math.min(time, duration));
+    const formattedTime = this.formatTime(clampedTime * 1000);
     const formattedDuration = this.formatTime(duration * 1000);
 
     this.lyriqModalTime.textContent = formattedTime;
     this.lyriqExpandedTime.textContent = `${formattedTime} / ${formattedDuration}`;
     
-    const newPosition = time * this.PIXELS_PER_SECOND;
+    const newPosition = clampedTime * this.PIXELS_PER_SECOND;
     this.lyriqPlayhead.style.transform = `translateX(${newPosition}px)`;
     
     if (this.lyriqIsPlaying && !this.isScrubbing) {
@@ -3529,7 +3570,7 @@ class VoiceNotesApp {
     }
     
     if (this.lyriqDebugMode) {
-        this.debugTime.textContent = time.toFixed(3);
+        this.debugTime.textContent = clampedTime.toFixed(3);
     }
   }
   

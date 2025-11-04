@@ -6,7 +6,7 @@
     <title>Dictation App</title>
     <link rel="stylesheet" href="/index.css">
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
       rel="stylesheet"
@@ -229,24 +229,24 @@
                           <canvas id="beatWaveformCanvas"></canvas>
                           <canvas id="vocalWaveformCanvas"></canvas>
                       </div>
-                      <div class="lyriq-volume-mixer" id="lyriqVolumeMixer">
-                        <div class="volume-track" data-track="beat">
-                            <div class="volume-label">
-                                <span class="volume-percentage" id="beatVolumePercentage">100%</span>
-                            </div>
-                            <div class="volume-slider-container" id="beatVolumeSliderContainer">
-                                <div class="volume-slider-fill" id="beatVolumeFill"></div>
-                            </div>
+                  </div>
+                  <div class="lyriq-volume-mixer" id="lyriqVolumeMixer">
+                    <div class="volume-track" data-track="beat">
+                        <div class="volume-label">
+                            <span class="volume-percentage" id="beatVolumePercentage">100%</span>
                         </div>
-                        <div class="volume-track" data-track="vocal">
-                            <div class="volume-label">
-                                <span class="volume-percentage" id="vocalVolumePercentage">100%</span>
-                            </div>
-                            <div class="volume-slider-container" id="vocalVolumeSliderContainer">
-                                <div class="volume-slider-fill" id="vocalVolumeFill"></div>
-                            </div>
+                        <div class="volume-slider-container" id="beatVolumeSliderContainer">
+                            <div class="volume-slider-fill" id="beatVolumeFill"></div>
                         </div>
-                      </div>
+                    </div>
+                    <div class="volume-track" data-track="vocal">
+                        <div class="volume-label">
+                            <span class="volume-percentage" id="vocalVolumePercentage">100%</span>
+                        </div>
+                        <div class="volume-slider-container" id="vocalVolumeSliderContainer">
+                            <div class="volume-slider-fill" id="vocalVolumeFill"></div>
+                        </div>
+                    </div>
                   </div>
               </div>
 

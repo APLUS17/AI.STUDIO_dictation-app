@@ -109,7 +109,7 @@
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-decelerate: cubic-bezier(0.0, 0, 0.2, 1);
   --ease-accelerate: cubic-bezier(0.4, 0, 1, 1);
-  --ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 
   --transition-fast: var(--duration-fast) var(--ease-standard);
   --transition-normal: var(--duration-normal) var(--ease-standard);
@@ -513,11 +513,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+  transition: background-color var(--transition-fast), color var(--transition-fast), transform var(--duration-fast) var(--ease-out-expo);
 }
 .action-button:hover {
   color: var(--color-text);
   background-color: var(--color-surface);
+  transform: scale(1.05);
 }
 .action-button:active {
   transform: scale(0.92);
@@ -741,25 +742,26 @@ body {
 
 .section-type-menu {
   position: absolute;
-  top: 110%;
+  top: 100%;
   left: 0;
   background-color: var(--color-bg-alt);
   border: 1px solid var(--color-border);
   border-radius: 8px;
   list-style: none;
   padding: 8px;
-  margin: 0;
+  margin: 4px 0 0;
   z-index: 10;
   box-shadow: var(--shadow-md);
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(5px) scale(0.98);
+  transform-origin: top left;
   pointer-events: none;
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  transition: opacity var(--duration-fast) var(--ease-decelerate), transform var(--duration-fast) var(--ease-decelerate);
   min-width: 150px;
 }
 .section-type-dropdown.open .section-type-menu {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
   pointer-events: auto;
 }
 .section-type-menu li button {
@@ -959,7 +961,7 @@ body {
   border-top-right-radius: 24px;
   z-index: 100;
   transform: translateY(100%);
-  transition: transform var(--duration-slow) var(--ease-overshoot);
+  transition: transform var(--duration-normal) var(--ease-out-expo);
   will-change: transform;
   padding: 0 24px;
   box-shadow: 0 -5px 30px rgba(0,0,0,0.3);
@@ -974,6 +976,19 @@ body {
   transition: none;
 }
 
+.live-recording-title, .waveform-container, #liveRecordingTimerDisplay, .recording-controls, .finish-recording-button, .status-indicator {
+  transition: opacity var(--duration-normal) var(--ease-decelerate);
+}
+
+.recording-interface.visible .live-recording-title,
+.recording-interface.visible .waveform-container,
+.recording-interface.visible #liveRecordingTimerDisplay,
+.recording-interface.visible .recording-controls,
+.recording-interface.visible .finish-recording-button,
+.recording-interface.visible .status-indicator {
+  transition-delay: 100ms;
+}
+
 /* Hide content when peeking */
 .recording-interface.peeking .live-recording-title,
 .recording-interface.peeking .waveform-container,
@@ -983,6 +998,7 @@ body {
 .recording-interface.peeking .status-indicator {
   opacity: 0;
   pointer-events: none;
+  transition-delay: 0ms;
 }
 
 .recording-interface-handle-container {
@@ -1020,10 +1036,6 @@ body {
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 
-
-.live-recording-title, .waveform-container, #liveRecordingTimerDisplay {
-  transition: opacity var(--transition-slow);
-}
 
 .live-recording-title {
   font-size: 20px;
@@ -1308,7 +1320,7 @@ body.light-mode .library-tab-btn.active {
   justify-content: center;
   font-size: 24px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: transform var(--transition-fast) var(--ease-out-expo), box-shadow var(--transition-fast);
 }
 .list-view-new-note-fab:hover {
   transform: scale(1.05);
@@ -1321,7 +1333,7 @@ body.light-mode .library-tab-btn.active {
   left: 50%;
   transform: translateX(-50%);
   z-index: 100;
-  transition: transform var(--duration-slow) var(--ease-overshoot), opacity var(--duration-slow) var(--ease-overshoot);
+  transition: transform var(--duration-normal) var(--ease-out-expo), opacity var(--duration-normal) var(--ease-out-expo);
   will-change: transform, opacity;
 }
 
@@ -1338,7 +1350,7 @@ body.light-mode .library-tab-btn.active {
   justify-content: center;
   font-size: 24px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: transform var(--transition-fast) var(--ease-out-expo), background-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .editor-fab:hover {
@@ -1406,6 +1418,7 @@ body.recording-modal-active .editor-fab-container {
 .lyriq-action-btn:hover {
   background-color: var(--color-surface);
   color: var(--color-text);
+  transform: scale(1.05);
 }
 .lyriq-action-btn:active {
   transform: scale(0.92);
@@ -1608,7 +1621,7 @@ body.light-mode .lyriq-action-btn.active {
   flex-direction: column;
   align-items: center;
   transform: translateY(100%);
-  transition: transform var(--transition-slow), height var(--transition-slow);
+  transition: transform var(--duration-normal) var(--ease-out-expo), height var(--duration-normal) var(--ease-out-expo);
   z-index: 105;
   padding: 0;
   height: var(--lyriq-modal-peeking-height);
@@ -1648,11 +1661,12 @@ body.light-mode .lyriq-action-btn.active {
   flex: 1;
   min-height: 0;
   gap: 16px;
-  transition: opacity var(--transition-slow);
+  transition: opacity var(--duration-normal) var(--ease-decelerate);
 }
 .lyriq-controls-modal.visible .lyriq-modal-peek-header {
   opacity: 0;
   pointer-events: none;
+  transition-delay: 0ms;
 }
 
 
@@ -1725,7 +1739,7 @@ body.light-mode .lyriq-action-btn.active {
   width: 100%;
   flex: 1;
   min-height: 0;
-  transition: opacity var(--transition-slow);
+  transition: opacity var(--duration-normal) var(--ease-decelerate) 150ms;
   padding: 0 24px 16px;
   position: absolute;
   top: 21px; /* handle height */
@@ -2008,6 +2022,10 @@ body.light-mode .lyriq-action-btn.active {
   display: none;
   min-width: 180px;
   padding: 6px;
+  transform: scale(0.98);
+  transform-origin: top left;
+  opacity: 0;
+  transition: transform var(--duration-fast) var(--ease-decelerate), opacity var(--duration-fast) var(--ease-decelerate);
 }
 .context-menu-list {
   list-style: none;
