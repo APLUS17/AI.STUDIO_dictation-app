@@ -330,7 +330,6 @@ class VoiceNotesApp {
   private lyriqPlayerView: HTMLDivElement;
   private lyriqSidebarToggleButton: HTMLButtonElement;
   private lyriqViewToggleButton: HTMLButtonElement;
-  private lyriqModeToggleBtn: HTMLButtonElement;
   private audioUploadInput: HTMLInputElement;
   private lyriqAudioPlayer: HTMLAudioElement;
   private lyriqVocalAudioPlayer: HTMLAudioElement;
@@ -395,8 +394,6 @@ class VoiceNotesApp {
   private lyriqLineElements: HTMLElement[] | null = null;
   private activeMixerTrack: MixerTrack = 'beat';
   private vocalBlobForMaster: Blob | null = null;
-  private lyriqMode: 'karaoke' | 'editor' = 'editor';
-  private lyriqLyricsAreDirty = false;
   
   private lyriqAnimationId: number | null = null;
   private readonly PIXELS_PER_SECOND = 100;
@@ -499,7 +496,6 @@ class VoiceNotesApp {
     this.lyriqPlayerView = document.querySelector('.lyriq-player-view') as HTMLDivElement;
     this.lyriqSidebarToggleButton = document.getElementById('lyriqSidebarToggleButton') as HTMLButtonElement;
     this.lyriqViewToggleButton = document.getElementById('lyriqViewToggleButton') as HTMLButtonElement;
-    this.lyriqModeToggleBtn = document.getElementById('lyriqModeToggleBtn') as HTMLButtonElement;
     this.audioUploadInput = document.getElementById('audioUpload') as HTMLInputElement;
     this.lyriqAudioPlayer = document.getElementById('lyriqAudio') as HTMLAudioElement;
     this.lyriqVocalAudioPlayer = document.getElementById('lyriqVocalAudio') as HTMLAudioElement;
@@ -677,7 +673,6 @@ class VoiceNotesApp {
     // Lyriq Player controls
     this.lyriqSidebarToggleButton.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleSidebar(); });
     this.lyriqViewToggleButton.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleEditorLyriqView(); });
-    this.lyriqModeToggleBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.toggleLyriqMode(); });
     this.audioUploadInput.addEventListener('change', (e) => this.handleLyriqFileUpload(e as Event));
     this.lyriqInitialAddBeatBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.audioUploadInput.click(); });
     this.lyriqInitialRecordBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.showLyriqModal(true); });
@@ -694,6 +689,7 @@ class VoiceNotesApp {
     
     this.lyriqAudioPlayer.addEventListener('loadedmetadata', () => this.handleLyriqMetadataLoaded());
     this.lyriqAudioPlayer.addEventListener('ended', () => this.handleLyriqEnded());
+    this.lyriqVocalAudioPlayer.addEventListener('ended', () => this.handleLyriqEnded());
     
     // Lyriq Mixer Controls
     this.lyriqExpandedAddBeatBtn.addEventListener('click', () => { this.triggerHapticFeedback(); this.handleBeatButtonClick(); });
@@ -753,11 +749,6 @@ class VoiceNotesApp {
   }
 
   private setActiveView(view: AppView): void {
-      // Save any pending edits if leaving Lyriq editor mode
-      if (this.activeView === 'lyriq' && this.lyriqMode === 'editor') {
-          this.updateNoteFromLyriqEditor();
-      }
-
       this.activeView = view;
 
       // Pause audio if navigating away from player
@@ -778,17 +769,8 @@ class VoiceNotesApp {
               break;
           case 'lyriq':
               this.appContainer.classList.add('lyriq-player-active');
-              // Reset to default Karaoke mode when entering the view
-              this.lyriqMode = 'karaoke';
-              this.lyriqLyricsAreDirty = false;
               this.lyriqPlayerView.classList.remove('editor-mode');
               this.lyricsContainer.contentEditable = 'false';
-              this.lyricsContainer.removeEventListener('input', this.handleLyriqEdit);
-              const icon = this.lyriqModeToggleBtn?.querySelector('i');
-              if (icon) {
-                  icon.className = 'fas fa-edit';
-                  this.lyriqModeToggleBtn.title = 'Editor Mode';
-              }
 
               this.loadNoteIntoLyriqPlayer();
               const hasAudio = this.beatAudioBuffer || this.vocalAudioBuffer;
@@ -2412,88 +2394,6 @@ class VoiceNotesApp {
       return audioContext;
   }
 
-  private toggleLyriqMode(): void {
-      this.lyriqMode = this.lyriqMode === 'karaoke' ? 'editor' : 'karaoke';
-      this.lyriqLyricsAreDirty = false; // Reset dirty flag on every toggle
-      const icon = this.lyriqModeToggleBtn.querySelector('i')!;
-  
-      if (this.lyriqMode === 'editor') {
-          this.lyriqPlayerView.classList.add('editor-mode');
-          icon.className = 'fas fa-microphone-alt';
-          this.lyriqModeToggleBtn.title = 'Karaoke Mode';
-          this.lyricsContainer.contentEditable = 'true';
-          this.lyricsContainer.addEventListener('input', this.handleLyriqEdit);
-          // Set focus to the editor
-          this.lyricsContainer.focus();
-      } else {
-          // Save any pending changes before switching out of editor mode
-          this.updateNoteFromLyriqEditor();
-          this.lyriqPlayerView.classList.remove('editor-mode');
-          icon.className = 'fas fa-edit';
-          this.lyriqModeToggleBtn.title = 'Editor Mode';
-          this.lyricsContainer.contentEditable = 'false';
-          this.lyricsContainer.removeEventListener('input', this.handleLyriqEdit);
-          // Reload the note to ensure karaoke view has correct (potentially un-synced) text
-          this.loadNoteIntoLyriqPlayer();
-      }
-  }
-
-  private handleLyriqEdit = (): void => {
-      this.lyriqLyricsAreDirty = true;
-      // Debounce the save operation to avoid excessive writes
-      if (this.debounceTimer) clearTimeout(this.debounceTimer);
-      this.debounceTimer = window.setTimeout(() => {
-          this.updateNoteFromLyriqEditor();
-      }, 800);
-  }
-
-  private updateNoteFromLyriqEditor = (): void => {
-      if (!this.currentNoteId || this.lyriqMode !== 'editor') return;
-      const note = this.notes.get(this.currentNoteId);
-      if (!note) return;
-
-      const newText = this.lyricsContainer.innerText;
-
-      const currentTextInEditor = (note.syncedLines && note.syncedLines.length > 0)
-          ? note.syncedLines.map(l => l.editedText || l.text).join('\n')
-          : this.flattenSections(note.sections);
-
-      if (currentTextInEditor === newText) {
-          return;
-      }
-
-      note.polishedNote = newText;
-      note.sections = [{ type: 'Verse', content: newText, takes: [] }];
-      note.timestamp = Date.now();
-      
-      if (this.lyriqLyricsAreDirty && note.syncedLines) {
-          const newLines = newText.split('\n');
-          
-          // If the number of lines has changed, the timing data is no longer valid.
-          if (newLines.length !== note.syncedLines.length) {
-              console.warn('Lyric line count changed. Detaching sync data.');
-              note.syncedLines = null;
-              note.syncedWords = null; // Also clear word-level sync
-          } else {
-              // Line count is the same, update the text but keep the timing.
-              note.syncedLines.forEach((line, index) => {
-                  const newLineText = newLines[index];
-                  if (newLineText !== undefined) {
-                      if (newLineText.trim() !== line.text.trim()) {
-                          line.editedText = newLineText;
-                      } else {
-                          // If the text is reverted to original, clear the edit flag
-                          delete line.editedText;
-                      }
-                  }
-              });
-          }
-          this.lyriqLyricsAreDirty = false;
-      }
-      
-      this.saveDataToStorage();
-  }
-
   private updateLyriqControlsState(): void {
       const hasAudio = !!(this.beatAudioBuffer || this.vocalAudioBuffer);
       const isRecordingInLyriq = this.isRecording && this.activeView === 'lyriq';
@@ -2818,21 +2718,30 @@ class VoiceNotesApp {
   }
 
   private handleLyriqEnded(): void {
-    this.lyriqIsPlaying = false;
-    if (this.isRecording) {
-      this.toggleLyriqRecording();
+    const beatPlayer = this.lyriqAudioPlayer;
+    const vocalPlayer = this.lyriqVocalAudioPlayer;
+
+    // Only run cleanup if all tracks that have content have ended.
+    const beatFinished = !beatPlayer.src || beatPlayer.ended;
+    const vocalFinished = !vocalPlayer.src || vocalPlayer.ended;
+
+    if (beatFinished && vocalFinished) {
+        this.lyriqIsPlaying = false;
+        if (this.isRecording) {
+          this.toggleLyriqRecording();
+        }
+        this.stopLyriqAnimation();
+        this.clearLyricHighlight();
+        const expandedIcon = this.lyriqExpandedPlayBtn.querySelector('i');
+        if (expandedIcon) expandedIcon.className = 'fas fa-play';
+        const peekIcon = this.lyriqModalPeekPlayBtn.querySelector('i');
+        if (peekIcon) peekIcon.className = 'fas fa-play';
+        
+        this.lyriqAudioPlayer.currentTime = 0;
+        if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.currentTime = 0;
+        this.lyriqWaveforms.scrollLeft = 0;
+        this.updatePlayheadVisuals(0);
     }
-    this.stopLyriqAnimation();
-    this.clearLyricHighlight();
-    const expandedIcon = this.lyriqExpandedPlayBtn.querySelector('i');
-    if (expandedIcon) expandedIcon.className = 'fas fa-play';
-    const peekIcon = this.lyriqModalPeekPlayBtn.querySelector('i');
-    if (peekIcon) peekIcon.className = 'fas fa-play';
-    
-    this.lyriqAudioPlayer.currentTime = 0;
-    if (this.lyriqVocalAudioPlayer.src) this.lyriqVocalAudioPlayer.currentTime = 0;
-    this.lyriqWaveforms.scrollLeft = 0;
-    this.updatePlayheadVisuals(0);
   }
   
   private setActiveMixerTrack(track: MixerTrack): void {
@@ -3542,11 +3451,33 @@ class VoiceNotesApp {
   private updatePlayheadVisuals(time: number): void {
     if (isNaN(time)) return;
     const duration = this.lyriqAudioPlayer.duration;
+
+    // Handle recording without a beat, where duration is NaN
     if (isNaN(duration)) {
-        this.lyriqModalTime.textContent = this.formatTime(0);
-        this.lyriqExpandedTime.textContent = `${this.formatTime(0)} / ${this.formatTime(0)}`;
-        return;
-    };
+      const formattedTime = this.formatTime(time * 1000);
+      this.lyriqModalTime.textContent = formattedTime;
+      this.lyriqExpandedTime.textContent = `${formattedTime} / --:--`;
+      
+      const newPosition = time * this.PIXELS_PER_SECOND;
+      this.lyriqPlayhead.style.transform = `translateX(${newPosition}px)`;
+
+      // Auto-scroll logic while recording
+      if (this.isRecording && !this.isScrubbing) {
+        const container = this.lyriqWaveforms;
+        const containerWidth = container.clientWidth;
+        const scrollPosition = container.scrollLeft;
+        const playheadCenter = newPosition - scrollPosition;
+
+        if (playheadCenter > containerWidth * 0.6) {
+          container.scrollLeft = newPosition - (containerWidth / 2);
+        }
+      }
+
+      if (this.lyriqDebugMode) {
+        this.debugTime.textContent = time.toFixed(3);
+      }
+      return;
+    }
     
     const clampedTime = Math.max(0, Math.min(time, duration));
     const formattedTime = this.formatTime(clampedTime * 1000);
