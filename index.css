@@ -316,8 +316,11 @@ body {
 /* Volume Mixer Overlay */
 .lyriq-volume-mixer {
   position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-  background: #161616; z-index: 20;
-  display: flex; align-items: center; justify-content: center; gap: 32px;
+  background: rgba(15, 15, 15, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 20;
+  display: flex; align-items: center; justify-content: center; gap: 60px;
   opacity: 0; pointer-events: none; transition: opacity 0.3s;
 }
 .lyriq-controls-modal.volume-view-active .lyriq-volume-mixer {
@@ -330,19 +333,45 @@ body {
 }
 
 .volume-track {
-  display: flex; flex-direction: column; align-items: center; gap: 12px; height: 100%;
+  display: flex; flex-direction: column; align-items: center; gap: 16px; height: 220px;
+  justify-content: flex-end;
 }
-.volume-label { font-family: 'SF Mono', monospace; font-size: 12px; color: #fff; }
+.volume-label { font-family: 'SF Mono', monospace; font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+
 .volume-slider-container {
-  width: 40px; flex: 1; background: rgba(255,255,255,0.1); border-radius: 20px;
-  position: relative; overflow: hidden; cursor: ns-resize;
+  width: 6px; flex: 1; background: rgba(255,255,255,0.15); border-radius: 99px;
+  position: relative; cursor: pointer; overflow: visible;
 }
+/* Hit area */
+.volume-slider-container::before {
+    content: ''; position: absolute; top: 0; bottom: 0; left: -24px; right: -24px; z-index: 1;
+}
+
 .volume-slider-fill {
   position: absolute; bottom: 0; left: 0; right: 0;
-  background: var(--color-accent); border-radius: 20px;
-  pointer-events: none;
+  background: var(--color-accent); border-radius: 99px;
+  pointer-events: none; width: 100%;
 }
-.volume-track-name { font-size: 12px; color: #888; font-weight: 600; }
+
+/* Thumb Handle */
+.volume-slider-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; 
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 24px;
+    height: 24px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    transition: transform 0.1s;
+}
+.volume-slider-container:active .volume-slider-fill::after {
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+.volume-track-name { font-size: 13px; color: var(--color-text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-top: 12px; }
 
 
 .lyriq-expanded-controls { 

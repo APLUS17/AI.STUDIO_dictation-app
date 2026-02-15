@@ -506,6 +506,8 @@ class VoiceNotesApp {
   }
 
   private handleVolumeDragStart(e: MouseEvent, track: 'beat' | 'vocal') {
+      e.preventDefault();
+      e.stopPropagation();
       this.isVolumeDragging = true;
       this.activeMixerTrack = track;
       this.handleVolumeDragMove(e);
@@ -513,6 +515,7 @@ class VoiceNotesApp {
 
   private handleVolumeDragMove(e: MouseEvent) {
       if (!this.isVolumeDragging || !this.activeMixerTrack) return;
+      e.preventDefault();
       
       const container = this.activeMixerTrack === 'beat' 
         ? this.el.beatVolumeSliderContainer 
@@ -520,12 +523,14 @@ class VoiceNotesApp {
         
       const rect = container.getBoundingClientRect();
       // Calculate percentage from bottom
-      const y = Math.max(0, Math.min(1, (rect.bottom - e.clientY) / rect.height));
+      const relativeY = rect.bottom - e.clientY;
+      const level = Math.max(0, Math.min(1, relativeY / rect.height));
       
-      this.setVolume(this.activeMixerTrack, y);
+      this.setVolume(this.activeMixerTrack, level);
   }
 
   private handleVolumeDragEnd() {
+      if (!this.isVolumeDragging) return;
       this.isVolumeDragging = false;
       this.activeMixerTrack = null;
   }
